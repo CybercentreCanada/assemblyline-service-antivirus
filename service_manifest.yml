@@ -1,0 +1,47 @@
+name: AntiVirus
+version: $SERVICE_TAG
+description: This service facilitates the dispatching and result-parsing to multiple anti-virus products.
+
+accepts: .*
+rejects: empty|metadata/.*
+
+stage: CORE
+category: Antivirus
+
+file_required: true
+timeout: 10
+disable_cache: false
+
+enabled: false
+is_external: false
+licence_count: 0
+
+config:
+  # Anti-virus host specifications.
+  icap_server_details:
+    hosts:
+      - ip: "localhost"
+        port: 1344
+        respmod_endpoint: "resp"
+  http_server_details:
+    hosts:
+      - ip: "localhost"
+        port: 8080
+        endpoint: "req"
+
+heuristics:
+  - heur_id: 1
+    name: File is infected
+    score: 1000
+    filetype: '*'
+    description: Antivirus hit.
+
+  - heur_id: 2
+    name: File is suspicious
+    score: 500
+    filetype: '*'
+    description: Heuristic Analysis hit.
+
+docker_config:
+  image: ${REGISTRY}cccs/assemblyline-service-antivirus:$SERVICE_TAG
+  cpu_cores: 0.25
