@@ -193,7 +193,7 @@ class TestAntiVirus:
 
     @staticmethod
     def test_init(antivirus_class_instance):
-        assert antivirus_class_instance.hosts is None
+        assert antivirus_class_instance.hosts == []
         assert antivirus_class_instance.retry_period == 0
 
     @staticmethod
