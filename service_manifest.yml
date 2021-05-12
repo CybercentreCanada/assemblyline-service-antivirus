@@ -28,6 +28,7 @@ config:
       endpoint: "req"
       method: "http"
       name: "HTTP_Server"
+  retry_period: 60  # in seconds
 
 heuristics:
   - heur_id: 1

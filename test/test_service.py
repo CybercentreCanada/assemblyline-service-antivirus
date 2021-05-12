@@ -151,6 +151,7 @@ class TestAntiVirusHost:
         assert avhost_icap.method == "icap"
         assert avhost_icap.endpoint == "blah"
         assert type(avhost_icap.client) == IcapClient
+        assert avhost_icap.sleeping is False
 
         avhost_http = antivirushost_class("blah", "blah", 8008, "http", "blah")
         assert avhost_http.name == "blah"
@@ -159,6 +160,18 @@ class TestAntiVirusHost:
         assert avhost_http.method == "http"
         assert avhost_http.endpoint == "blah"
         assert type(avhost_http.client) == Session
+        assert avhost_http.sleeping is False
+
+    @staticmethod
+    def test_sleep(antivirushost_class):
+        from time import sleep
+        from threading import Thread
+        av_host = antivirushost_class("blah", "blah", 8008, "http", "blah")
+        assert av_host.sleeping is False
+        Thread(target=av_host.sleep, args=[2]).start()
+        assert av_host.sleeping is True
+        sleep(2)
+        assert av_host.sleeping is False
 
 
 class TestAntiVirus:
@@ -181,6 +194,7 @@ class TestAntiVirus:
     @staticmethod
     def test_init(antivirus_class_instance):
         assert antivirus_class_instance.hosts is None
+        assert antivirus_class_instance.retry_period == 0
 
     @staticmethod
     def test_start(antivirus_class_instance):
@@ -190,6 +204,7 @@ class TestAntiVirus:
                          for host in hosts]
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
+        assert antivirus_class_instance.retry_period == 60
 
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
@@ -248,14 +263,22 @@ class TestAntiVirus:
         assert AntiVirus._get_hosts(hosts) == correct_hosts
 
     @staticmethod
-    def test_scan_file(antivirushost_class, mocker):
-        from antivirus import AntiVirus
+    def test_scan_file(antivirus_class_instance, antivirushost_class, mocker):
+        from socket import timeout
+        from time import sleep
         from assemblyline_v4_service.common.icap import IcapClient
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", "blah")
-        assert AntiVirus._scan_file(av_host_icap, "blah", b"blah") == ("blah", av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", av_host_icap)
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", "blah")
-        assert AntiVirus._scan_file(av_host_http, "blah", b"blah") == (None, av_host_http)
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == (None, av_host_http)
+        with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
+            assert av_host_icap.sleeping is False
+            antivirus_class_instance.retry_period = 2
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (None, av_host_icap)
+            assert av_host_icap.sleeping is True
+            sleep(3)
+            assert av_host_icap.sleeping is False
 
     @staticmethod
     def test_parse_result(mocker):

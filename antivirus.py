@@ -1,7 +1,11 @@
 import json
 from typing import Optional, Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor
+from threading import Thread
+from time import sleep
 from requests import Session
+from socket import timeout
+
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.icap import IcapClient
@@ -11,6 +15,7 @@ from assemblyline_v4_service.common.result import Heuristic, Result, ResultSecti
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
 VALID_METHODS = [ICAP_METHOD, HTTP_METHOD]
+DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60
 
 # Specific signature names
 REVISED_SIG_SCORE_MAP = {}
@@ -35,11 +40,18 @@ class AntiVirusHost:
             respmod_service=self.endpoint
         ) \
             if self.method == ICAP_METHOD else Session()
+        self.sleeping = False
 
     def __eq__(self, other):
         return self.name == other.name and self.ip == other.ip and \
                self.port == other.port and self.method == other.method and \
-               self.endpoint == other.endpoint and type(self.client) == type(other.client)
+               self.endpoint == other.endpoint and type(self.client) == type(other.client) and \
+               self.sleeping == other.sleeping
+
+    def sleep(self, timeout: int) -> None:
+        self.sleeping = True
+        sleep(timeout)
+        self.sleeping = False
 
 
 class AvHitSection(ResultSection):
@@ -82,9 +94,11 @@ class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
         self.hosts: Optional[List[AntiVirusHost]] = None
+        self.retry_period: int = 0
 
     def start(self) -> None:
         av_host_details = self.config.get("av_host_details", [])
+        self.retry_period = self.config.get("retry_period", DEFAULT_WAIT_TIME_BETWEEN_RETRIES)
         if len(av_host_details) < 1:
             raise ValueError(f"There does not appear to be any hosts loaded in the 'av_host_details' config "
                              f"variable in the service configurations.")
@@ -98,7 +112,7 @@ class AntiVirus(ServiceBase):
             # Submit the file to each of the hosts
             futures = [
                 executor.submit(self._scan_file, host, request.file_name, request.file_contents)
-                for host in self.hosts
+                for host in self.hosts if not host.sleeping
             ]
             for future in futures:
                 result, host = future.result()
@@ -111,11 +125,14 @@ class AntiVirus(ServiceBase):
     def _get_hosts(hosts: List[Dict[str, Any]]) -> List[AntiVirusHost]:
         return [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["endpoint"]) for host in hosts]
 
-    @staticmethod
-    def _scan_file(host: AntiVirusHost, file_name: str, file_contents: bytes) -> (str, AntiVirusHost):
+    def _scan_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes) -> (str, AntiVirusHost):
         results = None
-        if host.method == ICAP_METHOD:
-            results = host.client.scan_data(file_contents, file_name)
+        if host.method == ICAP_METHOD and host:
+            try:
+                results = host.client.scan_data(file_contents, file_name)
+            except timeout as e:
+                self.log.warning(f"{host.name} timed out due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
+                Thread(target=host.sleep, args=[self.retry_period]).start()
         elif host.method == HTTP_METHOD:
             pass
         return results, host
@@ -160,4 +177,3 @@ class AntiVirus(ServiceBase):
         else:
             for result_section in result_sections:
                 result.add_section(result_section)
-
