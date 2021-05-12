@@ -18,16 +18,17 @@ licence_count: 0
 
 config:
   av_host_details:
-    - ip: "localhost"
-      port: 1344
-      endpoint: "resp"
-      method: "icap"
-      name: "ICAP_Server"
-    - ip: "localhost"
-      port: 8080
-      endpoint: "req"
-      method: "http"
-      name: "HTTP_Server"
+    hosts:
+      - ip: "localhost"
+        port: 1344
+        endpoint: "resp"
+        method: "icap"
+        name: "ICAP_Server"
+      - ip: "localhost"
+        port: 8080
+        endpoint: "req"
+        method: "http"
+        name: "HTTP_Server"
   retry_period: 60  # in seconds
 
 heuristics:

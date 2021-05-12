@@ -97,12 +97,12 @@ class AntiVirus(ServiceBase):
         self.retry_period: int = 0
 
     def start(self) -> None:
-        av_host_details = self.config.get("av_host_details", [])
+        av_host_details = self.config.get("av_host_details", {})
         self.retry_period = self.config.get("retry_period", DEFAULT_WAIT_TIME_BETWEEN_RETRIES)
         if len(av_host_details) < 1:
             raise ValueError(f"There does not appear to be any hosts loaded in the 'av_host_details' config "
                              f"variable in the service configurations.")
-        self.hosts = self._get_hosts(av_host_details)
+        self.hosts = self._get_hosts(av_host_details["hosts"])
 
     def execute(self, request: ServiceRequest) -> None:
         request.result = Result()
@@ -116,7 +116,7 @@ class AntiVirus(ServiceBase):
             ]
             for future in futures:
                 result, host = future.result()
-                result_section = AntiVirus._parse_result(result, host.method, host.name)
+                result_section = AntiVirus._parse_result(result, host.method, host.name) if result is not None else None
                 if result_section is not None:
                     result_sections.append(result_section)
         AntiVirus._gather_results(self.hosts, result_sections, request.result)
@@ -130,10 +130,11 @@ class AntiVirus(ServiceBase):
         if host.method == ICAP_METHOD and host:
             try:
                 results = host.client.scan_data(file_contents, file_name)
-            except timeout as e:
+            except Exception as e:
                 self.log.warning(f"{host.name} timed out due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
                 Thread(target=host.sleep, args=[self.retry_period]).start()
         elif host.method == HTTP_METHOD:
+            # TODO
             pass
         return results, host
 
@@ -165,15 +166,23 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _parse_http_results(http_results: str, av_name: str) -> Optional[ResultSection]:
+        # TODO
         pass
 
     @staticmethod
     def _gather_results(hosts: List[AntiVirusHost], result_sections: List[ResultSection], result: Result):
         if len(result_sections) < 1:
-            no_threat_sec = ResultSection("No Threat Detected by AV Engine(s)",
+            no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
                                           body_format=BODY_FORMAT.KEY_VALUE,
                                           body=json.dumps(dict(no_threat_detected=[host.name for host in hosts])))
             result.add_section(no_threat_sec)
         else:
             for result_section in result_sections:
                 result.add_section(result_section)
+            if len(result_sections) < len(hosts):
+                no_result_hosts = [host.name for result_section in result_sections
+                                   for host in hosts if host.name not in result_section.body]
+                no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
+                                              body_format=BODY_FORMAT.KEY_VALUE,
+                                              body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
+                result.add_section(no_threat_sec)

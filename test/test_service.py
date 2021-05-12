@@ -170,7 +170,7 @@ class TestAntiVirusHost:
         assert av_host.sleeping is False
         Thread(target=av_host.sleep, args=[2]).start()
         assert av_host.sleeping is True
-        sleep(2)
+        sleep(3)
         assert av_host.sleeping is False
 
 
@@ -199,7 +199,7 @@ class TestAntiVirus:
     @staticmethod
     def test_start(antivirus_class_instance):
         from antivirus import AntiVirusHost
-        hosts = antivirus_class_instance.config["av_host_details"]
+        hosts = antivirus_class_instance.config["av_host_details"]["hosts"]
         correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["endpoint"])
                          for host in hosts]
         antivirus_class_instance.start()
@@ -333,15 +333,21 @@ class TestAntiVirus:
     def test_gather_results(dummy_result_class_instance):
         from antivirus import AntiVirus, AntiVirusHost
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
-        hosts = [AntiVirusHost("blah", "blah", 1234, "icap", "blah")]
+        hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", "blah"), AntiVirusHost("blah2", "blah", 1234, "icap", "blah")]
         AntiVirus._gather_results(hosts, [], dummy_result_class_instance)
-        correct_result_section = ResultSection(
-            "No Threat Detected by AV Engine(s)",
+        no_result_section1 = ResultSection(
+            "Failed to Scan or No Threat Detected by AV Engine(s)",
             body_format=BODY_FORMAT.KEY_VALUE,
             body=json.dumps(dict(no_threat_detected=[host.name for host in hosts]))
         )
-        assert check_section_equality(dummy_result_class_instance.sections[0], correct_result_section)
+        assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section1)
 
-        AntiVirus._gather_results(hosts, [ResultSection("blah")], dummy_result_class_instance)
-        correct_result_section = ResultSection("blah")
+        AntiVirus._gather_results(hosts, [ResultSection("blah", body="blah2")], dummy_result_class_instance)
+        correct_result_section = ResultSection("blah", body="blah2")
+        no_result_section2 = ResultSection(
+            "Failed to Scan or No Threat Detected by AV Engine(s)",
+            body_format=BODY_FORMAT.KEY_VALUE,
+            body=json.dumps(dict(no_threat_detected=[host.name for host in hosts[:1]]))
+        )
         assert check_section_equality(dummy_result_class_instance.sections[1], correct_result_section)
+        assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
