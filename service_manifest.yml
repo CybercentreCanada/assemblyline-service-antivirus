@@ -17,17 +17,17 @@ is_external: false
 licence_count: 0
 
 config:
-  # Anti-virus host specifications.
-  icap_server_details:
-    hosts:
-      - ip: "localhost"
-        port: 1344
-        respmod_endpoint: "resp"
-  http_server_details:
-    hosts:
-      - ip: "localhost"
-        port: 8080
-        endpoint: "req"
+  av_host_details:
+    - ip: "localhost"
+      port: 1344
+      endpoint: "resp"
+      method: "icap"
+      name: "ICAP_Server"
+    - ip: "localhost"
+      port: 8080
+      endpoint: "req"
+      method: "http"
+      name: "HTTP_Server"
 
 heuristics:
   - heur_id: 1
