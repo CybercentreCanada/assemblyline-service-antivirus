@@ -93,7 +93,7 @@ class AvHitSection(ResultSection):
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
-        self.hosts: Optional[List[AntiVirusHost]] = None
+        self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
 
     def start(self) -> None:
