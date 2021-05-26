@@ -1,6 +1,6 @@
 name: AntiVirus
 version: $SERVICE_TAG
-description: This service facilitates the dispatching and result-parsing to multiple anti-virus products.
+description: This service facilitates the dispatching and result-parsing to multiple antivirus products.
 
 accepts: .*
 rejects: empty|metadata/.*
@@ -25,6 +25,7 @@ config:
         method: "icap"
         name: "ICAP_Server"
         update_period: 240  # in minutes
+        group: "node_set_1"
       - ip: "localhost"
         port: 8080
         endpoint: "req"

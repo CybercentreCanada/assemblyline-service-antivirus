@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Set
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from time import sleep, time
@@ -28,7 +28,8 @@ class AntiVirusHost:
     """
     This class represents the antivirus product host and how it should be interacted with
     """
-    def __init__(self, name: str, ip: str, port: int, method: str, update_period: int, endpoint: str = None) -> None:
+    def __init__(self, name: str, ip: str, port: int, method: str, update_period: int, group: Optional[str] = None,
+                 endpoint: Optional[str] = None) -> None:
         """
         This method initializes the AntiVirusHost class and performs a couple validity checks
         @param name: The name of the antivirus product
@@ -36,6 +37,7 @@ class AntiVirusHost:
         @param port: The port at which the antivirus product is listening on
         @param method: The method with which this class should interact with the antivirus product
         @param update_period: The number of minutes between when the product polls for updates
+        @param group: The name of the set of nodes that have the same antivirus product deployed on them
         @param endpoint: The endpoint that the antivirus product will scan a file at
         @return: None
         """
@@ -47,6 +49,7 @@ class AntiVirusHost:
         self.port = port
         self.method = method
         self.update_period = update_period
+        self.group = group
         self.endpoint = endpoint
         self.client = IcapClient(
             host=self.ip,
@@ -144,13 +147,14 @@ class AntiVirus(ServiceBase):
         max_workers = len(self.hosts)
         av_version_result_sections: List[ResultSection] = []
         av_hit_result_sections: List[AvHitSection] = []
-        AntiVirus.determine_service_context(request, self.hosts)
+        AntiVirus._determine_service_context(request, self.hosts)
+        selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit the file to each of the hosts
             futures = [
                 executor.submit(self._scan_file, host, request.file_name, request.file_contents, request.deep_scan)
-                for host in self.hosts if not host.sleeping
+                for host in selected_hosts
             ]
             for future in futures:
                 result, version, host = future.result()
@@ -161,18 +165,24 @@ class AntiVirus(ServiceBase):
                 if av_hit_result_section is not None:
                     av_hit_result_sections.append(av_hit_result_section)
 
-        AntiVirus._gather_results(self.hosts, av_version_result_sections, av_hit_result_sections, request.result)
+        AntiVirus._gather_results(selected_hosts, av_version_result_sections, av_hit_result_sections, request.result)
 
     @staticmethod
     def _get_hosts(hosts: List[Dict[str, Any]]) -> List[AntiVirusHost]:
         """
-        This method creates a list of AntiVirusHost class instances for each entry in the service_manifest.yaml
+        This method validates and creates a list of AntiVirusHost class instances for each entry in the
+        service_manifest.yaml
         @param hosts: A list of host entries from the service manifest
         @return: A list of AntiVirusHost class instances
         """
+        host_names = [host["name"].lower() for host in hosts]
+        if len(set(host_names)) < len(host_names):
+            raise ValueError("Antivirus host names must be unique!")
+
         return [
             AntiVirusHost(
-                host["name"], host["ip"], host["port"], host["method"], host["update_period"], host.get("endpoint")
+                host["name"], host["ip"], host["port"], host["method"], host["update_period"], host.get("group"),
+                host.get("endpoint")
             )
             for host in hosts
         ]
@@ -299,7 +309,7 @@ class AntiVirus(ServiceBase):
                 result.add_section(no_threat_sec)
 
     @staticmethod
-    def determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
+    def _determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
         """
         This method determines the service context based on the following logic:
         Since we are not able to get the definition times via AV products, we will use the user-provided
@@ -315,3 +325,31 @@ class AntiVirus(ServiceBase):
         lower_range = floor_of_epoch_multiples * min_update_period
         upper_range = lower_range + min_update_period
         request.set_service_context(f"Engine Update Range: {lower_range} - {upper_range}")
+
+    @staticmethod
+    def _determine_hosts_to_use(hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:
+        """
+        This method takes a list of hosts, and determines which hosts are going to have files sent to them
+        @param hosts: the list of antivirus hosts registered in the service
+        @return: a list of antivirus hosts that will have files sent to them
+        """
+        selected_hosts: List[AntiVirusHost] = []
+        groups: Set[str] = set()
+
+        # First eliminate sleeping hosts
+        hosts_that_are_awake = [host for host in hosts if not host.sleeping]
+
+        # Next choose the first host per group
+        for host in hosts_that_are_awake:
+            if host.group and host.group not in groups:
+                groups.add(host.group)
+                selected_hosts.append(host)
+            elif host.group and host.group in groups:
+                # Maybe next time!
+                # TODO determine queues on awake hosts in the same node set to determine which host to send a file to
+                pass
+            else:
+                # If the host does not have a group, then we definitely want to send files to it, because this
+                # indicates that the host is not part of a node set
+                selected_hosts.append(host)
+        return selected_hosts
