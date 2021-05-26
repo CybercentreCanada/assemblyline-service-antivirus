@@ -141,7 +141,7 @@ class AntiVirus(ServiceBase):
         max_workers = len(self.hosts)
         av_version_result_sections: List[ResultSection] = []
         av_hit_result_sections: List[AvHitSection] = []
-        request.deep_scan = True
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit the file to each of the hosts
             futures = [
