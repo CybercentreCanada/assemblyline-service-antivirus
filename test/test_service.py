@@ -200,7 +200,7 @@ class TestAntiVirus:
     def test_start(antivirus_class_instance):
         from antivirus import AntiVirusHost
         hosts = antivirus_class_instance.config["av_host_details"]["hosts"]
-        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["endpoint"])
+        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host.get("endpoint"))
                          for host in hosts]
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
@@ -224,7 +224,7 @@ class TestAntiVirus:
         # For coverage
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_scan_file",
-                            return_value=("blah", antivirushost_class("blah", "blah", 1234, "icap", "blah")))
+                            return_value=("blah", None, antivirushost_class("blah", "blah", 1234, "icap", "blah")))
         mocker.patch.object(AntiVirus, "_parse_result", return_value="blah")
         mocker.patch.object(AntiVirus, "_gather_results")
 
@@ -268,17 +268,39 @@ class TestAntiVirus:
         from time import sleep
         from assemblyline_v4_service.common.icap import IcapClient
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
+        mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", "blah")
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah", False) == ("blah", None, av_host_icap)
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", "blah")
-        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == (None, av_host_http)
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah", False) == (None, None, av_host_http)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah", True) == ("blah", "blah", av_host_icap)
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
             assert av_host_icap.sleeping is False
             antivirus_class_instance.retry_period = 2
-            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (None, av_host_icap)
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah", False) == (None, None, av_host_icap)
             assert av_host_icap.sleeping is True
             sleep(3)
             assert av_host_icap.sleeping is False
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "version_result, av_name, expected_section_title, expected_body",
+        [
+            ("", "", "", None),
+            ("blah", "blah", "", None),
+            ("Server:blah", "blah", "blah Product Version", "blah"),
+            ("Service:blah", "blah", "blah Product Version", "blah"),
+        ]
+    )
+    def test_parse_version(version_result, av_name, expected_section_title, expected_body, antivirus_class_instance):
+        from antivirus import AntiVirus
+        from assemblyline_v4_service.common.result import ResultSection
+        if expected_section_title:
+            correct_result = ResultSection(expected_section_title, body=expected_body)
+            check_section_equality(AntiVirus._parse_version(version_result, av_name), correct_result)
+        else:
+            AntiVirus._parse_version(version_result, av_name)
+            assert True
 
     @staticmethod
     def test_parse_result(mocker):
@@ -318,7 +340,7 @@ class TestAntiVirus:
         else:
             correct_result_section = ResultSection(expected_section_title)
             correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
-            correct_result_section.heuristic.add_signature_id(f"{av_name.upper()}.{virus_name}")
+            correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.tags = expected_tags
             correct_result_section.body = expected_body
             correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
@@ -331,10 +353,10 @@ class TestAntiVirus:
 
     @staticmethod
     def test_gather_results(dummy_result_class_instance):
-        from antivirus import AntiVirus, AntiVirusHost
+        from antivirus import AntiVirus, AntiVirusHost, AvHitSection
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", "blah"), AntiVirusHost("blah2", "blah", 1234, "icap", "blah")]
-        AntiVirus._gather_results(hosts, [], dummy_result_class_instance)
+        AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
         no_result_section1 = ResultSection(
             "Failed to Scan or No Threat Detected by AV Engine(s)",
             body_format=BODY_FORMAT.KEY_VALUE,
@@ -342,12 +364,14 @@ class TestAntiVirus:
         )
         assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section1)
 
-        AntiVirus._gather_results(hosts, [ResultSection("blah", body="blah2")], dummy_result_class_instance)
-        correct_result_section = ResultSection("blah", body="blah2")
+        correct_version_result_section = ResultSection("blah", body="blah1")
+        correct_av_result_section = AvHitSection("blah2", "blah", {}, 1)
+        AntiVirus._gather_results(hosts, [correct_version_result_section], [correct_av_result_section], dummy_result_class_instance)
         no_result_section2 = ResultSection(
             "Failed to Scan or No Threat Detected by AV Engine(s)",
             body_format=BODY_FORMAT.KEY_VALUE,
             body=json.dumps(dict(no_threat_detected=[host.name for host in hosts[:1]]))
         )
-        assert check_section_equality(dummy_result_class_instance.sections[1], correct_result_section)
-        assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
+        assert check_section_equality(dummy_result_class_instance.sections[1], correct_version_result_section)
+        assert check_section_equality(dummy_result_class_instance.sections[2], correct_av_result_section)
+        assert check_section_equality(dummy_result_class_instance.sections[3], no_result_section2)
