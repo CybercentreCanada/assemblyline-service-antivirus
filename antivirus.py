@@ -15,7 +15,8 @@ from assemblyline_v4_service.common.result import Heuristic, Result, ResultSecti
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
 VALID_METHODS = [ICAP_METHOD, HTTP_METHOD]
-DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60
+DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
+DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS = 500  # in milliseconds
 
 # Specific signature names
 REVISED_SIG_SCORE_MAP = {}
@@ -128,42 +129,48 @@ class AvHitSection(ResultSection):
         # So that we can tag more items of interest
 
 
+# TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
+# Then we can put type hinting in the execute() method
+# Global variables
+av_version_result_sections: List[ResultSection] = []
+av_hit_result_sections: List[AvHitSection] = []
+
+
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
         self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
+        self.check_completion_interval: float = 0.0
 
     def start(self) -> None:
         av_host_details = self.config.get("av_host_details", {})
         self.retry_period = self.config.get("retry_period", DEFAULT_WAIT_TIME_BETWEEN_RETRIES)
+        self.check_completion_interval = self.config.get("check_completion_interval", DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS) / 1000  # Converting to seconds
         if len(av_host_details) < 1:
             raise ValueError(f"There does not appear to be any hosts loaded in the 'av_host_details' config "
                              f"variable in the service configurations.")
         self.hosts = self._get_hosts(av_host_details["hosts"])
 
     def execute(self, request: ServiceRequest) -> None:
+        global av_version_result_sections
+        global av_hit_result_sections
+        # Reset globals for each request
+        av_version_result_sections = []
+        av_hit_result_sections = []
+
         request.result = Result()
         max_workers = len(self.hosts)
-        av_version_result_sections: List[ResultSection] = []
-        av_hit_result_sections: List[AvHitSection] = []
         AntiVirus._determine_service_context(request, self.hosts)
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit the file to each of the hosts
             futures = [
-                executor.submit(self._scan_file, host, request.file_name, request.file_contents, request.deep_scan)
+                executor.submit(self._thr_process_file, host, request.file_name, request.file_contents, request.deep_scan)
                 for host in selected_hosts
             ]
-            for future in futures:
-                result, version, host = future.result()
-                av_version_result_section = AntiVirus._parse_version(version, host.name) if version is not None else None
-                av_hit_result_section = AntiVirus._parse_result(result, host.method, host.name) if result is not None else None
-                if av_version_result_section is not None:
-                    av_version_result_sections.append(av_version_result_section)
-                if av_hit_result_section is not None:
-                    av_hit_result_sections.append(av_hit_result_section)
+            while not all(future.done() for future in futures):
+                sleep(self.check_completion_interval)
 
         AntiVirus._gather_results(selected_hosts, av_version_result_sections, av_hit_result_sections, request.result)
 
@@ -186,6 +193,31 @@ class AntiVirus(ServiceBase):
             )
             for host in hosts
         ]
+
+    def _thr_process_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes, get_version: bool) -> None:
+        """
+        This method handles the file scanning and result parsing
+        @param host: The class instance representing an antivirus product
+        @param file_name: The name of the file to scan
+        @param file_contents: The contents of the file to scan
+        @param get_version: A flag indicating if we should query the product for the version
+        @return: None
+        """
+        global av_version_result_sections
+        global av_hit_result_sections
+
+        # Step 1: Scan file
+        result, version, host = self._scan_file(host, file_name, file_contents, get_version)
+
+        # Step 2: Parse results
+        av_version_result_section = self._parse_version(version, host.name) if version is not None else None
+        av_hit_result_section = self._parse_result(result, host.method, host.name) if result is not None else None
+
+        # Step 3: Add parsed results to result section lists
+        if av_version_result_section is not None:
+            av_version_result_sections.append(av_version_result_section)
+        if av_hit_result_section is not None:
+            av_hit_result_sections.append(av_hit_result_section)
 
     def _scan_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes,
                    get_version: bool) -> (Optional[str], Optional[str], AntiVirusHost):

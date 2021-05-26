@@ -199,6 +199,7 @@ class TestAntiVirus:
     def test_init(antivirus_class_instance):
         assert antivirus_class_instance.hosts == []
         assert antivirus_class_instance.retry_period == 0
+        assert antivirus_class_instance.check_completion_interval == 0.0
 
     @staticmethod
     def test_start(antivirus_class_instance):
@@ -212,6 +213,7 @@ class TestAntiVirus:
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
         assert antivirus_class_instance.retry_period == 60
+        assert antivirus_class_instance.check_completion_interval == 0.0
 
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
@@ -230,9 +232,7 @@ class TestAntiVirus:
 
         # For coverage
         service_request.task.deep_scan = True
-        mocker.patch.object(AntiVirus, "_scan_file",
-                            return_value=("blah", None, antivirushost_class("blah", "blah", 1234, "icap", 100, "blah")))
-        mocker.patch.object(AntiVirus, "_parse_result", return_value="blah")
+        mocker.patch.object(AntiVirus, "_thr_process_file")
         mocker.patch.object(AntiVirus, "_gather_results")
 
         # Actually executing the sample
@@ -277,6 +277,24 @@ class TestAntiVirus:
         ]
         with pytest.raises(ValueError):
             AntiVirus._get_hosts(hosts)
+
+    @staticmethod
+    def test_thr_process_file(antivirus_class_instance, mocker):
+        from antivirus import AntiVirus, AntiVirusHost, av_version_result_sections, av_hit_result_sections
+        avhost = AntiVirusHost("blah", "blah", 1, "icap", 1)
+        mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, None))
+        mocker.patch.object(AntiVirus, "_parse_version", return_value=None)
+        mocker.patch.object(AntiVirus, "_parse_result", return_value=None)
+        antivirus_class_instance._thr_process_file(avhost, "blah", b"blah", False)
+        assert av_version_result_sections == []
+        assert av_hit_result_sections == []
+
+        mocker.patch.object(AntiVirus, "_scan_file", return_value=(True, True, avhost))
+        mocker.patch.object(AntiVirus, "_parse_version", return_value="blah")
+        mocker.patch.object(AntiVirus, "_parse_result", return_value="blah")
+        antivirus_class_instance._thr_process_file(avhost, "blah", b"blah", False)
+        assert av_version_result_sections == ["blah"]
+        assert av_hit_result_sections == ["blah"]
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, mocker):
