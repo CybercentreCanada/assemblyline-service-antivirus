@@ -9,7 +9,7 @@ stage: CORE
 category: Antivirus
 
 file_required: true
-timeout: 10
+timeout: 60
 disable_cache: false
 
 enabled: false
@@ -21,7 +21,6 @@ config:
     hosts:
       - ip: "localhost"
         port: 1344
-        endpoint: "resp"
         method: "icap"
         name: "ICAP_Server"
       - ip: "localhost"
@@ -47,3 +46,4 @@ heuristics:
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-antivirus:$SERVICE_TAG
   cpu_cores: 0.25
+  allow_internet_access: true
