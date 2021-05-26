@@ -289,24 +289,22 @@ class AntiVirus(ServiceBase):
         @param result: The Result object that the ResultSections will go into
         @return: None
         """
+        # If no AV hit ResultSections, do nothing
+        if len(hit_result_sections) < 1:
+            return
+
         for version_res_sec in version_result_sections:
             result.add_section(version_res_sec)
 
-        if len(hit_result_sections) < 1:
+        for result_section in hit_result_sections:
+            result.add_section(result_section)
+        if len(hit_result_sections) < len(hosts):
+            no_result_hosts = [host.name for result_section in hit_result_sections
+                               for host in hosts if host.name not in result_section.body]
             no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
                                           body_format=BODY_FORMAT.KEY_VALUE,
-                                          body=json.dumps(dict(no_threat_detected=[host.name for host in hosts])))
+                                          body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
             result.add_section(no_threat_sec)
-        else:
-            for result_section in hit_result_sections:
-                result.add_section(result_section)
-            if len(hit_result_sections) < len(hosts):
-                no_result_hosts = [host.name for result_section in hit_result_sections
-                                   for host in hosts if host.name not in result_section.body]
-                no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
-                                              body_format=BODY_FORMAT.KEY_VALUE,
-                                              body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
-                result.add_section(no_threat_sec)
 
     @staticmethod
     def _determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
