@@ -21,13 +21,16 @@ config:
     hosts:
       - ip: "localhost"
         port: 1344
+        endpoint: "resp"
         method: "icap"
         name: "ICAP_Server"
+        update_period: 240  # in minutes
       - ip: "localhost"
         port: 8080
         endpoint: "req"
         method: "http"
         name: "HTTP_Server"
+        update_period: 240  # in minutes
   retry_period: 60  # in seconds
 
 heuristics:

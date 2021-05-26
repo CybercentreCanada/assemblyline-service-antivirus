@@ -2,7 +2,8 @@ import json
 from typing import Optional, Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
-from time import sleep
+from time import sleep, time
+from math import floor
 from requests import Session
 
 from assemblyline.common.str_utils import safe_str
@@ -27,13 +28,14 @@ class AntiVirusHost:
     """
     This class represents the antivirus product host and how it should be interacted with
     """
-    def __init__(self, name: str, ip: str, port: int, method: str, endpoint: str = None) -> None:
+    def __init__(self, name: str, ip: str, port: int, method: str, update_period: int, endpoint: str = None) -> None:
         """
         This method initializes the AntiVirusHost class and performs a couple validity checks
         @param name: The name of the antivirus product
         @param ip: The IP at which the antivirus product is hosted on and is listening on
         @param port: The port at which the antivirus product is listening on
         @param method: The method with which this class should interact with the antivirus product
+        @param update_period: The number of minutes between when the product polls for updates
         @param endpoint: The endpoint that the antivirus product will scan a file at
         @return: None
         """
@@ -44,6 +46,7 @@ class AntiVirusHost:
         self.ip = ip
         self.port = port
         self.method = method
+        self.update_period = update_period
         self.endpoint = endpoint
         self.client = IcapClient(
             host=self.ip,
@@ -61,8 +64,8 @@ class AntiVirusHost:
         """
         return self.name == other.name and self.ip == other.ip and \
                self.port == other.port and self.method == other.method and \
-               self.endpoint == other.endpoint and type(self.client) == type(other.client) and \
-               self.sleeping == other.sleeping
+               self.update_period == other.update_period and self.endpoint == other.endpoint and \
+               type(self.client) == type(other.client) and self.sleeping == other.sleeping
 
     def sleep(self, timeout: int) -> None:
         """
@@ -141,6 +144,7 @@ class AntiVirus(ServiceBase):
         max_workers = len(self.hosts)
         av_version_result_sections: List[ResultSection] = []
         av_hit_result_sections: List[AvHitSection] = []
+        AntiVirus.determine_service_context(request, self.hosts)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit the file to each of the hosts
@@ -167,7 +171,9 @@ class AntiVirus(ServiceBase):
         @return: A list of AntiVirusHost class instances
         """
         return [
-            AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host.get("endpoint"))
+            AntiVirusHost(
+                host["name"], host["ip"], host["port"], host["method"], host["update_period"], host.get("endpoint")
+            )
             for host in hosts
         ]
 
@@ -291,3 +297,21 @@ class AntiVirus(ServiceBase):
                                               body_format=BODY_FORMAT.KEY_VALUE,
                                               body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
                 result.add_section(no_threat_sec)
+
+    @staticmethod
+    def determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
+        """
+        This method determines the service context based on the following logic:
+        Since we are not able to get the definition times via AV products, we will use the user-provided
+        update polling period as a benchmark for the service context. We will take the current time in seconds and
+        determine a time range where at least one AV update has occurred
+        @param request: The ServiceRequest which we will be setting the service context for
+        @param hosts: A list of AntivirusHost class instances
+        @return: None
+        """
+        min_update_period = min([host.update_period for host in hosts]) * 60  # Convert to seconds
+        current_epoch_time = int(time())
+        floor_of_epoch_multiples = floor(current_epoch_time/min_update_period)
+        lower_range = floor_of_epoch_multiples * min_update_period
+        upper_range = lower_range + min_update_period
+        request.set_service_context(f"Engine Update Range: {lower_range} - {upper_range}")
