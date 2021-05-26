@@ -142,14 +142,15 @@ class TestAntiVirusHost:
         from requests import Session
         from assemblyline_v4_service.common.icap import IcapClient
         with pytest.raises(ValueError):
-            antivirushost_class("blah", "blah", 8008, "blah", 100, "blah")
+            antivirushost_class("blah", "blah", 8008, "blah", 100)
 
-        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", 100, "blah")
+        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", 100, "blah", "blah")
         assert avhost_icap.name == "blah"
         assert avhost_icap.ip == "blah"
         assert avhost_icap.port == 8008
         assert avhost_icap.method == "icap"
         assert avhost_icap.endpoint == "blah"
+        assert avhost_icap.group == "blah"
         assert avhost_icap.update_period == 100
         assert type(avhost_icap.client) == IcapClient
         assert avhost_icap.sleeping is False
@@ -160,6 +161,7 @@ class TestAntiVirusHost:
         assert avhost_http.port == 8008
         assert avhost_http.method == "http"
         assert avhost_http.endpoint is None
+        assert avhost_http.group is None
         assert avhost_http.update_period == 100
         assert type(avhost_http.client) == Session
         assert avhost_http.sleeping is False
@@ -168,7 +170,7 @@ class TestAntiVirusHost:
     def test_sleep(antivirushost_class):
         from time import sleep
         from threading import Thread
-        av_host = antivirushost_class("blah", "blah", 8008, "http", "blah")
+        av_host = antivirushost_class("blah", "blah", 8008, "http", 100)
         assert av_host.sleeping is False
         Thread(target=av_host.sleep, args=[2]).start()
         assert av_host.sleeping is True
@@ -204,7 +206,7 @@ class TestAntiVirus:
         hosts = antivirus_class_instance.config["av_host_details"]["hosts"]
         correct_hosts = [
             AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["update_period"],
-                          host.get("endpoint"))
+                          host.get("group"), host.get("endpoint"))
             for host in hosts
         ]
         antivirus_class_instance.start()
@@ -262,12 +264,19 @@ class TestAntiVirus:
         assert test_result_response == correct_result_response
 
     @staticmethod
-    def test_get_hosts():
+    def test_get_hosts(antivirus_class_instance):
         from antivirus import AntiVirus, AntiVirusHost
-        hosts = [{"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100}]
-        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["update_period"], host["endpoint"])
+        hosts = [{"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100, "group": "blah"}]
+        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["update_period"], host["group"], host["endpoint"])
                          for host in hosts]
         assert AntiVirus._get_hosts(hosts) == correct_hosts
+
+        hosts = [
+            {"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100},
+            {"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100}
+        ]
+        with pytest.raises(ValueError):
+            AntiVirus._get_hosts(hosts)
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, mocker):
@@ -397,9 +406,24 @@ class TestAntiVirus:
         service_request = ServiceRequest(task)
         av_host1 = AntiVirusHost("blah", "blah", 1, "icap", 30)
         av_host2 = AntiVirusHost("blah", "blah", 1, "icap", 60)
-        AntiVirus.determine_service_context(service_request, [av_host1, av_host2])
+        AntiVirus._determine_service_context(service_request, [av_host1, av_host2])
         epoch_time = int(time())
         floor_of_epoch_multiples = floor(epoch_time/(30*60))
         lower_range = floor_of_epoch_multiples * 30 * 60
         upper_range = lower_range + 30 * 60
         assert service_request.task.service_context == f"Engine Update Range: {lower_range} - {upper_range}"
+
+    @staticmethod
+    def test_determine_hosts_to_use(antivirus_class_instance):
+        from antivirus import AntiVirus, AntiVirusHost
+        different_group_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1, "beta")
+        no_group_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
+        sleeping_av_host = AntiVirusHost("blah2", "blah", 1, "icap", 1, "alpha")
+        sleeping_av_host.sleeping = True
+        correct_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1, "alpha")
+        additional_av_host = AntiVirusHost("blah4", "blah", 1, "icap", 1, "alpha")
+        hosts = [different_group_av_host, no_group_av_host, sleeping_av_host, correct_av_host, additional_av_host]
+        actual_hosts = AntiVirus._determine_hosts_to_use(hosts)
+        assert actual_hosts[0] == different_group_av_host
+        assert actual_hosts[1] == no_group_av_host
+        assert actual_hosts[2] == correct_av_host
