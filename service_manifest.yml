@@ -33,6 +33,7 @@ config:
         name: "HTTP_Server"
         update_period: 240  # in minutes
   retry_period: 60  # in seconds
+  check_completion_interval: 0  # in milliseconds
 
 heuristics:
   - heur_id: 1
