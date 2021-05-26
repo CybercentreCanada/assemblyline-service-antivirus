@@ -142,23 +142,25 @@ class TestAntiVirusHost:
         from requests import Session
         from assemblyline_v4_service.common.icap import IcapClient
         with pytest.raises(ValueError):
-            antivirushost_class("blah", "blah", 8008, "blah", "blah")
+            antivirushost_class("blah", "blah", 8008, "blah", 100, "blah")
 
-        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", "blah")
+        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", 100, "blah")
         assert avhost_icap.name == "blah"
         assert avhost_icap.ip == "blah"
         assert avhost_icap.port == 8008
         assert avhost_icap.method == "icap"
         assert avhost_icap.endpoint == "blah"
+        assert avhost_icap.update_period == 100
         assert type(avhost_icap.client) == IcapClient
         assert avhost_icap.sleeping is False
 
-        avhost_http = antivirushost_class("blah", "blah", 8008, "http", "blah")
+        avhost_http = antivirushost_class("blah", "blah", 8008, "http", 100)
         assert avhost_http.name == "blah"
         assert avhost_http.ip == "blah"
         assert avhost_http.port == 8008
         assert avhost_http.method == "http"
-        assert avhost_http.endpoint == "blah"
+        assert avhost_http.endpoint is None
+        assert avhost_http.update_period == 100
         assert type(avhost_http.client) == Session
         assert avhost_http.sleeping is False
 
@@ -200,8 +202,11 @@ class TestAntiVirus:
     def test_start(antivirus_class_instance):
         from antivirus import AntiVirusHost
         hosts = antivirus_class_instance.config["av_host_details"]["hosts"]
-        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host.get("endpoint"))
-                         for host in hosts]
+        correct_hosts = [
+            AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["update_period"],
+                          host.get("endpoint"))
+            for host in hosts
+        ]
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
         assert antivirus_class_instance.retry_period == 60
@@ -224,7 +229,7 @@ class TestAntiVirus:
         # For coverage
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_scan_file",
-                            return_value=("blah", None, antivirushost_class("blah", "blah", 1234, "icap", "blah")))
+                            return_value=("blah", None, antivirushost_class("blah", "blah", 1234, "icap", 100, "blah")))
         mocker.patch.object(AntiVirus, "_parse_result", return_value="blah")
         mocker.patch.object(AntiVirus, "_gather_results")
 
@@ -252,13 +257,15 @@ class TestAntiVirus:
         correct_result_response["milestones"].pop("service_completed")
         correct_result_response.pop("supplementary")
         test_result_response.pop("supplementary")
+        correct_result_response.pop("service_context")
+        test_result_response.pop("service_context")
         assert test_result_response == correct_result_response
 
     @staticmethod
     def test_get_hosts():
         from antivirus import AntiVirus, AntiVirusHost
-        hosts = [{"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah"}]
-        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["endpoint"])
+        hosts = [{"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100}]
+        correct_hosts = [AntiVirusHost(host["name"], host["ip"], host["port"], host["method"], host["update_period"], host["endpoint"])
                          for host in hosts]
         assert AntiVirus._get_hosts(hosts) == correct_hosts
 
@@ -269,9 +276,9 @@ class TestAntiVirus:
         from assemblyline_v4_service.common.icap import IcapClient
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
-        av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", "blah")
+        av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100, "blah")
         assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah", False) == ("blah", None, av_host_icap)
-        av_host_http = antivirushost_class("blah", "blah", 1234, "http", "blah")
+        av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100, "blah")
         assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah", False) == (None, None, av_host_http)
         assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah", True) == ("blah", "blah", av_host_icap)
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
@@ -375,3 +382,24 @@ class TestAntiVirus:
         assert check_section_equality(dummy_result_class_instance.sections[1], correct_version_result_section)
         assert check_section_equality(dummy_result_class_instance.sections[2], correct_av_result_section)
         assert check_section_equality(dummy_result_class_instance.sections[3], no_result_section2)
+
+    @staticmethod
+    @pytest.mark.parametrize("sample", samples)
+    def test_determine_service_context(sample, antivirus_class_instance):
+        from assemblyline_v4_service.common.request import ServiceRequest
+        from assemblyline_v4_service.common.task import Task
+        from assemblyline.odm.messages.task import Task as ServiceTask
+        from antivirus import AntiVirus, AntiVirusHost
+        from time import time
+        from math import floor
+        service_task = ServiceTask(sample)
+        task = Task(service_task)
+        service_request = ServiceRequest(task)
+        av_host1 = AntiVirusHost("blah", "blah", 1, "icap", 30)
+        av_host2 = AntiVirusHost("blah", "blah", 1, "icap", 60)
+        AntiVirus.determine_service_context(service_request, [av_host1, av_host2])
+        epoch_time = int(time())
+        floor_of_epoch_multiples = floor(epoch_time/(30*60))
+        lower_range = floor_of_epoch_multiples * 30 * 60
+        upper_range = lower_range + 30 * 60
+        assert service_request.task.service_context == f"Engine Update Range: {lower_range} - {upper_range}"
