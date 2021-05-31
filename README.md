@@ -3,7 +3,7 @@ This service facilitates the dispatching and result-parsing to any antivirus pro
 
 ## What antivirus products are supported?
 So far, we have tested with the following:
-- Kaspersky Scan Engine in ICAP Mode (Linux Version): KL ICAP Service v1.0 (KAV SDK v8.9.2.595)
+- Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP Mode
   - https://www.kaspersky.com/scan-engine
 - McAfee Web Gateway with ICAP turned on: McAfee Web Gateway 9.2.2 build 33635
 
