@@ -150,9 +150,12 @@ class AntiVirus(ServiceBase):
         self.retry_period = self.config.get("retry_period", DEFAULT_WAIT_TIME_BETWEEN_RETRIES)
         self.check_completion_interval = self.config.get("check_completion_interval", DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS) / 1000  # Converting to seconds
         if len(products) < 1:
-            raise ValueError(f"There does not appear to be any hosts loaded in the 'products' config "
+            raise ValueError(f"There does not appear to be any products loaded in the 'products' config "
                              f"variable in the service configurations.")
         self.hosts = self._get_hosts(products)
+        if len(self.hosts) < 1:
+            raise ValueError(f"There does not appear to be any hosts loaded in the 'products' config "
+                             f"variable in the service configurations.")
 
     def execute(self, request: ServiceRequest) -> None:
         global av_hit_result_sections
