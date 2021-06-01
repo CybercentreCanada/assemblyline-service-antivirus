@@ -389,6 +389,7 @@ class TestAntiVirus:
         from assemblyline_v4_service.common.request import ServiceRequest
         from assemblyline_v4_service.common.task import Task
         from assemblyline.odm.messages.task import Task as ServiceTask
+        from assemblyline.common.isotime import epoch_to_local
         from antivirus import AntiVirus, AntiVirusHost
         from time import time
         from math import floor
@@ -403,8 +404,8 @@ class TestAntiVirus:
         floor_of_epoch_multiples = floor(epoch_time/(30*60))
         lower_range = floor_of_epoch_multiples * 30 * 60
         upper_range = lower_range + 30 * 60
-        lower_range_date = datetime.fromtimestamp(lower_range).strftime("%Y-%m-%d %H:%M:%S")
-        upper_range_date = datetime.fromtimestamp(upper_range).strftime("%Y-%m-%d %H:%M:%S")
+        lower_range_date = epoch_to_local(lower_range)
+        upper_range_date = epoch_to_local(upper_range)
         assert service_request.task.service_context == f"Engine Update Range: {lower_range_date} - {upper_range_date}"
 
     @staticmethod

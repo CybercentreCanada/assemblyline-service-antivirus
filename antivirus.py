@@ -3,11 +3,11 @@ from typing import Optional, Dict, List, Any, Set
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from time import sleep, time
-from datetime import datetime
 from math import floor
 from requests import Session
 
 from assemblyline.common.str_utils import safe_str
+from assemblyline.common.isotime import epoch_to_local, epoch_to_iso
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
@@ -344,9 +344,7 @@ class AntiVirus(ServiceBase):
         floor_of_epoch_multiples = floor(current_epoch_time/min_update_period)
         lower_range = floor_of_epoch_multiples * min_update_period
         upper_range = lower_range + min_update_period
-        lower_range_date = datetime.fromtimestamp(lower_range).strftime("%Y-%m-%d %H:%M:%S")
-        upper_range_date = datetime.fromtimestamp(upper_range).strftime("%Y-%m-%d %H:%M:%S")
-        request.set_service_context(f"Engine Update Range: {lower_range_date} - {upper_range_date}")
+        request.set_service_context(f"Engine Update Range: {epoch_to_local(lower_range)} - {epoch_to_local(upper_range)}")
 
     @staticmethod
     def _determine_hosts_to_use(hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:
