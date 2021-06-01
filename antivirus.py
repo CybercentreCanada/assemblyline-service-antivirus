@@ -3,6 +3,7 @@ from typing import Optional, Dict, List, Any, Set
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from time import sleep, time
+from datetime import datetime
 from math import floor
 from requests import Session
 
@@ -343,7 +344,9 @@ class AntiVirus(ServiceBase):
         floor_of_epoch_multiples = floor(current_epoch_time/min_update_period)
         lower_range = floor_of_epoch_multiples * min_update_period
         upper_range = lower_range + min_update_period
-        request.set_service_context(f"Engine Update Range: {lower_range} - {upper_range}")
+        lower_range_date = datetime.fromtimestamp(lower_range).strftime("%Y-%m-%d %H:%M:%S")
+        upper_range_date = datetime.fromtimestamp(upper_range).strftime("%Y-%m-%d %H:%M:%S")
+        request.set_service_context(f"Engine Update Range: {lower_range_date} - {upper_range_date}")
 
     @staticmethod
     def _determine_hosts_to_use(hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:

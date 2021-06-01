@@ -392,6 +392,7 @@ class TestAntiVirus:
         from antivirus import AntiVirus, AntiVirusHost
         from time import time
         from math import floor
+        from datetime import datetime
         service_task = ServiceTask(sample)
         task = Task(service_task)
         service_request = ServiceRequest(task)
@@ -402,7 +403,9 @@ class TestAntiVirus:
         floor_of_epoch_multiples = floor(epoch_time/(30*60))
         lower_range = floor_of_epoch_multiples * 30 * 60
         upper_range = lower_range + 30 * 60
-        assert service_request.task.service_context == f"Engine Update Range: {lower_range} - {upper_range}"
+        lower_range_date = datetime.fromtimestamp(lower_range).strftime("%Y-%m-%d %H:%M:%S")
+        upper_range_date = datetime.fromtimestamp(upper_range).strftime("%Y-%m-%d %H:%M:%S")
+        assert service_request.task.service_context == f"Engine Update Range: {lower_range_date} - {upper_range_date}"
 
     @staticmethod
     def test_determine_hosts_to_use(antivirus_class_instance):
