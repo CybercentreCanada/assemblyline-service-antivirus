@@ -7,7 +7,7 @@ from math import floor
 from requests import Session
 
 from assemblyline.common.str_utils import safe_str
-from assemblyline.common.isotime import epoch_to_local, epoch_to_iso
+from assemblyline.common.isotime import epoch_to_local
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
