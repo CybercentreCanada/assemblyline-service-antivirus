@@ -5,6 +5,7 @@ from threading import Thread
 from time import sleep, time
 from math import floor
 from requests import Session
+from base64 import b64encode
 
 from assemblyline.common.str_utils import safe_str
 from assemblyline.common.isotime import epoch_to_local
@@ -31,7 +32,7 @@ class AntiVirusHost:
     This class represents the antivirus product host and how it should be interacted with
     """
     def __init__(self, group: str, ip: str, port: int, method: str, update_period: int,
-                 endpoint: Optional[str] = None) -> None:
+                 version_endpoint: Optional[str] = None, scan_endpoint: Optional[str] = None) -> None:
         """
         This method initializes the AntiVirusHost class and performs a couple validity checks
         @param group: The name of the antivirus product
@@ -39,7 +40,8 @@ class AntiVirusHost:
         @param port: The port at which the antivirus product is listening on
         @param method: The method with which this class should interact with the antivirus product
         @param update_period: The number of minutes between when the product polls for updates
-        @param endpoint: The endpoint that the antivirus product will scan a file at
+        @param version_endpoint: The endpoint that the antivirus product will return the engine version at
+        @param scan_endpoint: The endpoint that the antivirus product will scan a file at
         @return: None
         """
         if method not in VALID_METHODS:
@@ -50,11 +52,12 @@ class AntiVirusHost:
         self.port = port
         self.method = method
         self.update_period = update_period
-        self.endpoint = endpoint
+        self.version_endpoint = version_endpoint
+        self.scan_endpoint = scan_endpoint
         self.client = IcapClient(
             host=self.ip,
             port=self.port,
-            respmod_service=self.endpoint
+            respmod_service=self.scan_endpoint
         ) \
             if self.method == ICAP_METHOD else Session()
         self.sleeping = False
@@ -67,7 +70,8 @@ class AntiVirusHost:
         """
         return self.group == other.group and self.ip == other.ip and \
                self.port == other.port and self.method == other.method and \
-               self.update_period == other.update_period and self.endpoint == other.endpoint and \
+               self.update_period == other.update_period and self.version_endpoint == other.version_endpoint and \
+               self.scan_endpoint == other.scan_endpoint and \
                type(self.client) == type(other.client) and self.sleeping == other.sleeping
 
     def sleep(self, timeout: int) -> None:
@@ -188,7 +192,7 @@ class AntiVirus(ServiceBase):
         """
         return [
             AntiVirusHost(
-                product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("endpoint")
+                product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("version_endpoint"), host.get("scan_endpoint")
             )
             for product in products for host in product["hosts"]
         ]
@@ -208,7 +212,7 @@ class AntiVirus(ServiceBase):
         result, version, host = self._scan_file(host, file_name, file_contents)
 
         # Step 2: Parse results
-        av_version = self._parse_version(version) if version is not None else None
+        av_version = self._parse_version(version, host.method) if version is not None else None
         av_hit_result_section = self._parse_result(result, host.method, host.group, av_version) if result is not None else None
 
         # Step 3: Add parsed results to result section lists
@@ -227,16 +231,23 @@ class AntiVirus(ServiceBase):
         """
         results: Optional[str] = None
         version: Optional[str] = None
-        if host.method == ICAP_METHOD and host:
-            try:
+        try:
+            if host.method == ICAP_METHOD and host:
                 version = host.client.options_respmod()
                 results = host.client.scan_data(file_contents, file_name)
-            except Exception as e:
-                self.log.warning(f"{host.group} timed out due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
-                Thread(target=host.sleep, args=[self.retry_period]).start()
-        elif host.method == HTTP_METHOD:
-            # TODO
-            pass
+            elif host.method == HTTP_METHOD:
+                base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
+                if host.version_endpoint:
+                    version = host.client.get(f"{base_url}/{host.version_endpoint}").text
+                if host.scan_endpoint:
+                    results = host.client.post(f"{HTTP_METHOD}://{host.ip}:{host.port}/{host.scan_endpoint}",
+                                               json={"object": b64encode(file_contents)}).text
+                else:
+                    results = host.client.post(f"{HTTP_METHOD}://{host.ip}:{host.port}",
+                                               json={"object": b64encode(file_contents)}).text
+        except Exception as e:
+            self.log.warning(f"{host.group} timed out due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
+            Thread(target=host.sleep, args=[self.retry_period]).start()
         return results, version, host
 
     @staticmethod
@@ -252,20 +263,24 @@ class AntiVirus(ServiceBase):
         if av_method == ICAP_METHOD:
             return AntiVirus._parse_icap_results(av_results, av_name, av_version)
         elif av_method == HTTP_METHOD:
-            return AntiVirus._parse_http_results(av_results, av_name)
+            return AntiVirus._parse_http_results(av_results, av_name, av_version)
 
     @staticmethod
-    def _parse_version(version_result: str) -> Optional[str]:
+    def _parse_version(version_result: str, method: str) -> Optional[str]:
         """
         This method parses the response of the version request
         @param version_result: The response of the version request
+        @param method: The method with which this class should interact with the antivirus product
         @return: A string detailing the version of the antivirus product, if applicable
         """
         version: Optional[str] = None
-        for line in version_result.splitlines():
-            if any(line.startswith(item) for item in ['Server:', 'Service:']):
-                version = line[line.index(':')+1:].strip()
-                break
+        if method == ICAP_METHOD:
+            for line in version_result.splitlines():
+                if any(line.startswith(item) for item in ['Server:', 'Service:']):
+                    version = line[line.index(':')+1:].strip()
+                    break
+        elif method == HTTP_METHOD:
+            version = safe_str(version_result)
         return version
 
     @staticmethod
@@ -295,15 +310,24 @@ class AntiVirus(ServiceBase):
             return AvHitSection(av_name, av_version, virus_name, {}, 1)
 
     @staticmethod
-    def _parse_http_results(http_results: str, av_name: str) -> Optional[AvHitSection]:
+    def _parse_http_results(http_results: str, av_name: str, av_version: Optional[str]) -> Optional[AvHitSection]:
         """
         This method parses the results of the HTTP response from scanning the file
         @param http_results: The results of scanning the file, from the HTTP server
         @param av_name: The name of the antivirus product
+        @param av_version: A string detailing the version of the antivirus product, if applicable
         @return: An AvHitSection detailing the results of the scan, if applicable
         """
-        # TODO
-        pass
+        http_results_as_json = json.loads(http_results)
+        virus_name_key = "detectionName"
+
+        if http_results_as_json.get(virus_name_key):
+            virus_name = http_results_as_json[virus_name_key]
+            if "HEUR:" in virus_name:
+                virus_name = virus_name.replace("HEUR:", "")
+                return AvHitSection(av_name, av_version, virus_name, {}, 2)
+            else:
+                return AvHitSection(av_name, av_version, virus_name, {}, 1)
 
     @staticmethod
     def _gather_results(hosts: List[AntiVirusHost], hit_result_sections: List[AvHitSection], result: Result) -> None:
