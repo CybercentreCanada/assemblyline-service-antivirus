@@ -29,8 +29,9 @@ config:
         hosts:
           - ip: "localhost"
             port: 1344
-            endpoint: "resp"
-            method: "icap"
+            version_endpoint: "version"
+            scan_endpoint: "scan"
+            method: "http"
             update_period: 240  # in minutes
   retry_period: 60  # in seconds
   check_completion_interval: 0  # in milliseconds

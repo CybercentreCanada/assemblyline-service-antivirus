@@ -136,6 +136,14 @@ def dummy_result_class_instance():
         remove_tmp_manifest()
 
 
+@pytest.fixture
+def dummy_requests_class_instance():
+    class DummyRequests(object):
+        def __init__(self, text):
+            self.text = text
+    return DummyRequests
+
+
 class TestAntiVirusHost:
     @staticmethod
     def test_init(antivirushost_class):
@@ -144,22 +152,24 @@ class TestAntiVirusHost:
         with pytest.raises(ValueError):
             antivirushost_class("blah", "blah", 8008, "blah", 100)
 
-        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", 100, "blah")
+        avhost_icap = antivirushost_class("blah", "blah", 8008, "icap", 100)
         assert avhost_icap.group == "blah"
         assert avhost_icap.ip == "blah"
         assert avhost_icap.port == 8008
         assert avhost_icap.method == "icap"
-        assert avhost_icap.endpoint == "blah"
+        assert avhost_icap.version_endpoint is None
+        assert avhost_icap.scan_endpoint is None
         assert avhost_icap.update_period == 100
         assert type(avhost_icap.client) == IcapClient
         assert avhost_icap.sleeping is False
 
-        avhost_http = antivirushost_class("blah", "blah", 8008, "http", 100)
+        avhost_http = antivirushost_class("blah", "blah", 8008, "http", 100, "blah", "blah")
         assert avhost_http.group == "blah"
         assert avhost_http.ip == "blah"
         assert avhost_http.port == 8008
         assert avhost_http.method == "http"
-        assert avhost_http.endpoint is None
+        assert avhost_http.version_endpoint == "blah"
+        assert avhost_http.scan_endpoint == "blah"
         assert avhost_http.update_period == 100
         assert type(avhost_http.client) == Session
         assert avhost_http.sleeping is False
@@ -204,7 +214,7 @@ class TestAntiVirus:
         from antivirus import AntiVirusHost
         products = antivirus_class_instance.config["av_config"]["products"]
         correct_hosts = [
-            AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("endpoint"))
+            AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("version_endpoint"), host.get("scan_endpoint"))
             for product in products for host in product["hosts"]
         ]
         antivirus_class_instance.start()
@@ -263,8 +273,8 @@ class TestAntiVirus:
     @staticmethod
     def test_get_hosts(antivirus_class_instance):
         from antivirus import AntiVirus, AntiVirusHost
-        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100, "group": "blah"}]}]
-        correct_hosts = [AntiVirusHost(host["group"], host["ip"], host["port"], host["method"], host["update_period"], host["endpoint"])
+        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "version_endpoint": "version", "scan_endpoint": "resp", "method": "icap", "name": "blah", "update_period": 100, "group": "blah"}]}]
+        correct_hosts = [AntiVirusHost(host["group"], host["ip"], host["port"], host["method"], host["update_period"], host["version_endpoint"], host["scan_endpoint"])
                          for product in products for host in product["hosts"]]
         assert AntiVirus._get_hosts(products) == correct_hosts
 
@@ -285,17 +295,24 @@ class TestAntiVirus:
         assert av_hit_result_sections == ["blah"]
 
     @staticmethod
-    def test_scan_file(antivirus_class_instance, antivirushost_class, mocker):
+    def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
         from socket import timeout
         from time import sleep
+        from requests.sessions import Session
         from assemblyline_v4_service.common.icap import IcapClient
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100, "blah")
         assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", "blah", av_host_icap)
+
+        mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
+        mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100, "blah")
-        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == (None, None, av_host_http)
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", "blah", av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ("blah", "blah", av_host_http)
+
+        av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100, "blah", "blah")
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ("blah", "blah", av_host_http)
+
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
             assert av_host_icap.sleeping is False
             antivirus_class_instance.retry_period = 2
@@ -306,17 +323,18 @@ class TestAntiVirus:
 
     @staticmethod
     @pytest.mark.parametrize(
-        "version_result, correct_result",
+        "version_result, method, correct_result",
         [
-            ("", None),
-            ("blah", None),
-            ("Server:blah", "blah"),
-            ("Service:blah", "blah"),
+            ("", "icap", None),
+            ("blah", "icap", None),
+            ("Server:blah", "icap", "blah"),
+            ("Service:blah", "icap", "blah"),
+            ("blah", "http", "blah"),
         ]
     )
-    def test_parse_version(version_result, correct_result, antivirus_class_instance):
+    def test_parse_version(version_result, method, correct_result, antivirus_class_instance):
         from antivirus import AntiVirus
-        assert AntiVirus._parse_version(version_result) == correct_result
+        assert AntiVirus._parse_version(version_result, method) == correct_result
 
     @staticmethod
     def test_parse_result(mocker):
@@ -362,8 +380,34 @@ class TestAntiVirus:
             assert check_section_equality(test_result_section, correct_result_section)
 
     @staticmethod
-    def test_parse_http_results():
-        pass
+    @pytest.mark.parametrize(
+        "http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
+        [
+            ("{}", "", "", "", {}, 0, {}),
+            ("{\"not_detectionName\":\"blah\"}", "", "", "", {}, 0, {}),
+            ("{\"detectionName\":\"virus_name\"}", "blah", "virus_name", "blah identified the file as virus_name",
+             {"av.virus_name": ["virus_name"]}, 1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
+                                                   '"infected", "av_version": "blah"}'),
+            ("{\"detectionName\": \"HEUR:virus_heur\"}", "blah", "virus_heur",
+             "blah identified the file as virus_heur",
+             {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]}, 2,
+             '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
+        ]
+    )
+    def test_parse_http_results(http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body, antivirus_class_instance):
+        from assemblyline_v4_service.common.result import ResultSection, Heuristic, BODY_FORMAT
+        av_name = "blah"
+        if not expected_section_title:
+            assert antivirus_class_instance._parse_http_results(http_result, av_name, version) is None
+        else:
+            correct_result_section = ResultSection(expected_section_title)
+            correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
+            correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
+            correct_result_section.tags = expected_tags
+            correct_result_section.body = expected_body
+            correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
+            test_result_section = antivirus_class_instance._parse_http_results(http_result, av_name, version)
+            assert check_section_equality(test_result_section, correct_result_section)
 
     @staticmethod
     def test_gather_results(dummy_result_class_instance):

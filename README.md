@@ -3,11 +3,12 @@ This service facilitates the dispatching and result-parsing to any antivirus pro
 
 ## What antivirus products are supported?
 So far, we have tested with the following:
-- Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP Mode
+- Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP Mode and HTTP Mode
   - https://www.kaspersky.com/scan-engine
 - McAfee Web Gateway with ICAP turned on: McAfee Web Gateway 9.2.2 build 33635
+  - TODO: MWG with HTTP
 
-But in theory any antivirus product will work with this service as long as it is configured for ICAP or HTTP (TODO) responses.
+But in theory any antivirus product will work with this service as long as it is configured for ICAP or HTTP responses.
 
 ## How to add an antivirus product?
 ### Things you need:
