@@ -426,7 +426,7 @@ class AntiVirus(ServiceBase):
 
         for line in result_lines:
             if line.startswith(virus_name_header):
-                virus_name = line[len(virus_name_header):].strip()
+                virus_name = line[len(virus_name_header) + 1:].strip()
                 break
 
         if not virus_name:
