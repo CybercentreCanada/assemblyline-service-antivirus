@@ -20,17 +20,22 @@ config:
   av_config:
     products:
       - product: "Product1"
+        heuristic_analysis_keys:
+          - "HEUR:"
         hosts:
           - ip: "localhost"
             port: 1344
             method: "icap"
             update_period: 240  # in minutes
       - product: "Product2"
+        heuristic_analysis_keys:
+          - "HEUR/"
         hosts:
           - ip: "localhost"
-            port: 1344
-            version_endpoint: "version"
-            scan_endpoint: "scan"
+            port: 8000
+            http_scan_details:
+              version_endpoint: "version"
+              scan_endpoint: "scan"
             method: "http"
             update_period: 240  # in minutes
   retry_period: 60  # in seconds

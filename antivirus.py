@@ -6,6 +6,7 @@ from time import sleep, time
 from math import floor
 from requests import Session
 from base64 import b64encode
+from re import search
 
 from assemblyline.common.str_utils import safe_str
 from assemblyline.common.isotime import epoch_to_local
@@ -17,8 +18,12 @@ from assemblyline_v4_service.common.result import Heuristic, Result, ResultSecti
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
 VALID_METHODS = [ICAP_METHOD, HTTP_METHOD]
+POST_JSON = "json"
+POST_DATA = "data"
+VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
 DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS = 500  # in milliseconds
+VERSION_REGEX = r"(?<=\().*?(?=\))"  # Grabs a substring found between parentheses
 
 # Specific signature names
 REVISED_SIG_SCORE_MAP = {}
@@ -32,32 +37,49 @@ class AntiVirusHost:
     This class represents the antivirus product host and how it should be interacted with
     """
     def __init__(self, group: str, ip: str, port: int, method: str, update_period: int,
-                 version_endpoint: Optional[str] = None, scan_endpoint: Optional[str] = None) -> None:
+                 heuristic_analysis_keys: List[str] = None, icap_scan_details: Dict[str, Any] = None,
+                 http_scan_details: Dict[str, Any] = None) -> None:
         """
-        This method initializes the AntiVirusHost class and performs a couple validity checks
+        This method initializes the AntiVirusHost class and performs a couple of validity checks
         @param group: The name of the antivirus product
         @param ip: The IP at which the antivirus product is hosted on and is listening on
         @param port: The port at which the antivirus product is listening on
-        @param method: The method with which this class should interact with the antivirus product
+        @param method: The method with which this class should interact with the antivirus product (value must be one of "icap" or "http")
         @param update_period: The number of minutes between when the product polls for updates
-        @param version_endpoint: The endpoint that the antivirus product will return the engine version at
-        @param scan_endpoint: The endpoint that the antivirus product will scan a file at
+        @param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
+        indicate that heuristic analysis caused the signature to be raised
+        @param icap_scan_details: The details regarding scanning and parsing a file via ICAP
+        @param http_scan_details: The details regarding scanning and parsing a file via HTTP
         @return: None
         """
         if method not in VALID_METHODS:
             raise ValueError(f"Given method '{method}' is not one of {VALID_METHODS}.")
+
+        if heuristic_analysis_keys is None:
+            heuristic_analysis_keys = []
 
         self.group = group
         self.ip = ip
         self.port = port
         self.method = method
         self.update_period = update_period
-        self.version_endpoint = version_endpoint
-        self.scan_endpoint = scan_endpoint
+        self.heuristic_analysis_keys = heuristic_analysis_keys
+
+        if method == ICAP_METHOD:
+            if icap_scan_details is None:
+                icap_scan_details = {}
+            self.icap_scan_details = ICAPScanDetails(**icap_scan_details)
+            self.http_scan_details = None
+        elif method == HTTP_METHOD:
+            if http_scan_details is None:
+                http_scan_details = {}
+            self.http_scan_details = HTTPScanDetails(**http_scan_details)
+            self.icap_scan_details = None
+
         self.client = IcapClient(
             host=self.ip,
             port=self.port,
-            respmod_service=self.scan_endpoint
+            respmod_service=self.icap_scan_details.scan_endpoint
         ) \
             if self.method == ICAP_METHOD else Session()
         self.sleeping = False
@@ -68,11 +90,14 @@ class AntiVirusHost:
         @param other: The other class instance which this class instance will be compared with
         @return: A boolean indicating if the two class instances are equal
         """
+        if not isinstance(other, AntiVirusHost):
+            return NotImplemented
         return self.group == other.group and self.ip == other.ip and \
                self.port == other.port and self.method == other.method and \
-               self.update_period == other.update_period and self.version_endpoint == other.version_endpoint and \
-               self.scan_endpoint == other.scan_endpoint and \
-               type(self.client) == type(other.client) and self.sleeping == other.sleeping
+               self.update_period == other.update_period and self.icap_scan_details == other.icap_scan_details and \
+               self.http_scan_details == other.http_scan_details and \
+               type(self.client) == type(other.client) and self.sleeping == other.sleeping and \
+               self.heuristic_analysis_keys == other.heuristic_analysis_keys
 
     def sleep(self, timeout: int) -> None:
         """
@@ -83,6 +108,77 @@ class AntiVirusHost:
         self.sleeping = True
         sleep(timeout)
         self.sleeping = False
+
+
+class ICAPScanDetails:
+    """
+    This class contains details regarding scanning and parsing a file via ICAP
+    """
+    def __init__(self, virus_name_header: str = "X-Virus-ID", scan_endpoint: str = "") -> None:
+        """
+        This method initializes the ICAPScanDetails class
+        @param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
+        @param scan_endpoint: The URI endpoint at which the service is listening for file contents to be submitted or OPTIONS to be queried.
+        @return: None
+        """
+        self.virus_name_header = virus_name_header
+        self.scan_endpoint = scan_endpoint
+
+    def __eq__(self, other):
+        """
+        This method verifies the equality between class instances by their attributes
+        @param other: The other class instance which this class instance will be compared with
+        @return: A boolean indicating if the two class instances are equal
+        """
+        if not isinstance(other, ICAPScanDetails):
+            return NotImplemented
+        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint
+
+
+class HTTPScanDetails:
+    """
+    This class contains details regarding scanning and parsing a file via HTTP
+    """
+    def __init__(self, post_data_type: str = "data", json_key_for_post: str = "file", result_in_headers: bool = False,
+                 via_proxy: bool = False, virus_name_header: str = "X-Virus-ID", version_endpoint: str = "",
+                 scan_endpoint: str = "", base64_encode: bool = False) -> None:
+        """
+        This method initializes the HTTPScanDetails class and performs a validity check
+        @param post_data_type: The format in which the file contents will be POSTed to the antivirus product server (value must be one of "json" or "data").
+        @param json_key_for_post: If the file contents will be POSTed to the antivirus product as the value in a JSON key-value pair, this value is the key.
+        @param result_in_headers: A boolean indicating if the antivirus signature will be found in the response headers.
+        @param via_proxy: A boolean indicating if the antivirus product service is a proxy. This is used to grab the antivirus product service version from the response headers.
+        @param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name.
+        @param version_endpoint: The URI endpoint at which the service is listening for a GET for the antivirus product service version.
+        @param scan_endpoint: The URI endpoint at which the service is listening for file contents to be POSTed or OPTIONS to be queried.
+        @param base64_encode: A boolean indicating if the file contents should be base64 encoded prior to being POSTed to the antivirus product server.
+        @return: None
+        """
+        if post_data_type not in VALID_POST_TYPES:
+            raise ValueError(f"Given data type for POST '{post_data_type}' is not one of {VALID_POST_TYPES}.")
+
+        self.post_data_type = post_data_type
+        self.json_key_for_post = json_key_for_post
+        self.result_in_headers = result_in_headers
+        self.via_proxy = via_proxy
+        self.virus_name_header = virus_name_header
+        self.version_endpoint = version_endpoint
+        self.scan_endpoint = scan_endpoint
+        self.base64_encode = base64_encode
+
+    def __eq__(self, other):
+        """
+        This method verifies the equality between class instances by their attributes
+        @param other: The other class instance which this class instance will be compared with
+        @return: A boolean indicating if the two class instances are equal
+        """
+        if not isinstance(other, HTTPScanDetails):
+            return NotImplemented
+        return self.post_data_type == other.post_data_type and self.base64_encode == other.base64_encode and \
+               self.result_in_headers == other.result_in_headers and self.via_proxy == other.via_proxy and \
+               self.virus_name_header == other.virus_name_header and \
+               self.json_key_for_post == other.json_key_for_post and \
+               self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
 
 
 class AvHitSection(ResultSection):
@@ -190,9 +286,18 @@ class AntiVirus(ServiceBase):
         @param products: A list of product entries from the service manifest
         @return: A list of AntiVirusHost class instances
         """
+        # Check if products have the same name
+        unique_product_names = set()
+        for product in products:
+            unique_product_names.add(product["product"])
+        if len(products) > len(unique_product_names):
+            raise ValueError(f"There are {len(products)} products but only {len(unique_product_names)} unique "
+                             f"product names. Please rename the duplicate antivirus product to something unique, or "
+                             f"add it as an additional host to another product.")
+
         return [
             AntiVirusHost(
-                product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("version_endpoint"), host.get("scan_endpoint")
+                product["product"], host["ip"], host["port"], host["method"], host["update_period"], product.get("heuristic_analysis_keys"), host.get("icap_scan_details"), host.get("http_scan_details")
             )
             for product in products for host in product["hosts"]
         ]
@@ -213,11 +318,11 @@ class AntiVirus(ServiceBase):
 
         # Step 2: Parse results
         av_version = self._parse_version(version, host.method) if version is not None else None
-        av_hit_result_section = self._parse_result(result, host.method, host.group, av_version) if result is not None else None
+        av_hits = self._parse_result(result, host, av_version) if result is not None else []
 
         # Step 3: Add parsed results to result section lists
-        if av_hit_result_section is not None:
-            av_hit_result_sections.append(av_hit_result_section)
+        for av_hit in av_hits:
+            av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes)\
             -> (Optional[str], Optional[str], AntiVirusHost):
@@ -232,38 +337,57 @@ class AntiVirus(ServiceBase):
         results: Optional[str] = None
         version: Optional[str] = None
         try:
-            if host.method == ICAP_METHOD and host:
+            if host.method == ICAP_METHOD:
                 version = host.client.options_respmod()
                 results = host.client.scan_data(file_contents, file_name)
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
-                if host.version_endpoint:
-                    version = host.client.get(f"{base_url}/{host.version_endpoint}").text
-                if host.scan_endpoint:
-                    results = host.client.post(f"{HTTP_METHOD}://{host.ip}:{host.port}/{host.scan_endpoint}",
-                                               json={"object": b64encode(file_contents)}).text
-                else:
-                    results = host.client.post(f"{HTTP_METHOD}://{host.ip}:{host.port}",
-                                               json={"object": b64encode(file_contents)}).text
+                # Setting up the POST based on the user's configurations
+                if host.http_scan_details.base64_encode:
+                    file_contents = b64encode(file_contents)
+
+                if host.http_scan_details.version_endpoint:
+                    version = host.client.get(f"{base_url}/{host.http_scan_details.version_endpoint}").text
+
+                scan_url = f"{base_url}/{host.http_scan_details.scan_endpoint}"
+                resp = None
+
+                if host.http_scan_details.post_data_type == POST_DATA:
+                    resp = host.client.post(scan_url, data=file_contents)
+                elif host.http_scan_details.post_data_type == POST_JSON:
+                    json_to_post = {host.http_scan_details.json_key_for_post: file_contents}
+                    resp = host.client.post(scan_url, json=json_to_post)
+
+                if host.http_scan_details.via_proxy:
+                    # Remove the host IP from this header
+                    via_header = resp.headers.get("Via")
+                    if via_header:
+                        version = search(VERSION_REGEX, via_header).group(0)
+
+                if resp is not None and host.http_scan_details.result_in_headers:
+                    results = json.dumps(dict(resp.headers))
+                elif resp is not None and not host.http_scan_details.result_in_headers:
+                    results = resp.text
         except Exception as e:
             self.log.warning(f"{host.group} timed out due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
             Thread(target=host.sleep, args=[self.retry_period]).start()
         return results, version, host
 
     @staticmethod
-    def _parse_result(av_results: str, av_method: str, av_name: str, av_version: Optional[str]) -> Optional[AvHitSection]:
+    def _parse_result(av_results: str, host: AntiVirusHost, av_version: Optional[str]) -> List[AvHitSection]:
         """
         This method sends the results to the appropriate parser based on the method
         @param av_results: The results of scanning the file
-        @param av_method: The method in which the file was scanned
-        @param av_name: The name of the antivirus product
+        @param host: The class instance representing an antivirus product
         @param av_version: A string detailing the version of the antivirus product, if applicable
-        @result: An AvHitSection detailing the results of the scan, if applicable
+        @result: A list of AvHitSections detailing the results of the scan, if applicable
         """
-        if av_method == ICAP_METHOD:
-            return AntiVirus._parse_icap_results(av_results, av_name, av_version)
-        elif av_method == HTTP_METHOD:
-            return AntiVirus._parse_http_results(av_results, av_name, av_version)
+        if host.method == ICAP_METHOD:
+            return AntiVirus._parse_icap_results(av_results, host.group, host.icap_scan_details.virus_name_header, host.heuristic_analysis_keys, av_version)
+        elif host.method == HTTP_METHOD:
+            return AntiVirus._parse_http_results(av_results, host.group, host.http_scan_details.virus_name_header, host.heuristic_analysis_keys, av_version)
+        else:
+            return []
 
     @staticmethod
     def _parse_version(version_result: str, method: str) -> Optional[str]:
@@ -277,57 +401,87 @@ class AntiVirus(ServiceBase):
         if method == ICAP_METHOD:
             for line in version_result.splitlines():
                 if any(line.startswith(item) for item in ['Server:', 'Service:']):
-                    version = line[line.index(':')+1:].strip()
+                    version = line[line.index(':') + 1:].strip()
                     break
         elif method == HTTP_METHOD:
             version = safe_str(version_result)
         return version
 
     @staticmethod
-    def _parse_icap_results(icap_results: str, av_name: str, av_version: Optional[str]) -> Optional[AvHitSection]:
+    def _parse_icap_results(icap_results: str, av_name: str, virus_name_header: str,  heuristic_analysis_keys: List[str], av_version: Optional[str]) -> List[AvHitSection]:
         """
         This method parses the results of the ICAP response from scanning the file
         @param icap_results: The results of scanning the file, from the ICAP server
         @param av_name: The name of the antivirus product
-        @param av_version: A string detailing the version of the antivirus product, if applicable
-        @return: An AvHitSection detailing the results of the scan, if applicable
+        @param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
+        @param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
+        indicate that heuristic analysis caused the signature to be raised@param av_version: A string detailing the version of the antivirus product, if applicable
+        @return: A list of AvHitSections detailing the results of the scan, if applicable
         """
         virus_name: Optional[str] = None
+        av_hits = []
         result_lines = icap_results.strip().splitlines()
         if len(result_lines) <= 3 and "204" not in result_lines[0]:
             raise Exception(f'Invalid result from ICAP server: {safe_str(str(icap_results))}')
 
-        xvirus_key = 'X-Virus-ID:'
         for line in result_lines:
-            if line.startswith(xvirus_key):
-                virus_name = line[len(xvirus_key):].strip()
+            if line.startswith(virus_name_header):
+                virus_name = line[len(virus_name_header):].strip()
                 break
 
-        if virus_name and "HEUR:" in virus_name:
-            virus_name = virus_name.replace("HEUR:", "")
-            return AvHitSection(av_name, av_version, virus_name, {}, 2)
-        elif virus_name:
-            return AvHitSection(av_name, av_version, virus_name, {}, 1)
+        if not virus_name:
+            return av_hits
+
+        heur_analysis = False
+        if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
+            heur_analysis = True
+            for heuristic_analysis_key in heuristic_analysis_keys:
+                virus_name = virus_name.replace(heuristic_analysis_key, "")
+        if heur_analysis:
+            av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 2))
+        else:
+            av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 1))
+        return av_hits
 
     @staticmethod
-    def _parse_http_results(http_results: str, av_name: str, av_version: Optional[str]) -> Optional[AvHitSection]:
+    def _parse_http_results(http_results: str, av_name: str, virus_name_header: str,  heuristic_analysis_keys: List[str], av_version: Optional[str]) -> List[AvHitSection]:
         """
         This method parses the results of the HTTP response from scanning the file
         @param http_results: The results of scanning the file, from the HTTP server
         @param av_name: The name of the antivirus product
+        @param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
+        @param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
+        indicate that heuristic analysis caused the signature to be raised
         @param av_version: A string detailing the version of the antivirus product, if applicable
-        @return: An AvHitSection detailing the results of the scan, if applicable
+        @return: A list of AvHitSectiona detailing the results of the scan, if applicable
         """
         http_results_as_json = json.loads(http_results)
-        virus_name_key = "detectionName"
-
-        if http_results_as_json.get(virus_name_key):
-            virus_name = http_results_as_json[virus_name_key]
-            if "HEUR:" in virus_name:
-                virus_name = virus_name.replace("HEUR:", "")
-                return AvHitSection(av_name, av_version, virus_name, {}, 2)
-            else:
-                return AvHitSection(av_name, av_version, virus_name, {}, 1)
+        av_hits = []
+        product_name = av_name
+        if http_results_as_json.get(virus_name_header):
+            virus_name = http_results_as_json[virus_name_header]
+            # If there is more than one signature returned, let's grab all of them
+            # The assumption here is that antivirus providers will return a virus name of the format <str> or <str>,<str>,...
+            virus_names = virus_name.split(",")
+            for virus_name in virus_names:
+                virus_name = virus_name.strip()
+                # The assumption here is that antivirus providers will return a virus name of the format <av_name>:<virus_name>
+                temp_av_name = None
+                heur_analysis = False
+                if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
+                    heur_analysis = True
+                    for heuristic_analysis_key in heuristic_analysis_keys:
+                        virus_name = virus_name.replace(heuristic_analysis_key, "")
+                if ":" in virus_name:
+                    temp_av_name, virus_name = virus_name.split(":")
+                    temp_av_name = temp_av_name.strip()
+                    virus_name = virus_name.strip()
+                av_name = temp_av_name if temp_av_name else product_name
+                if heur_analysis:
+                    av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 2))
+                else:
+                    av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 1))
+        return av_hits
 
     @staticmethod
     def _gather_results(hosts: List[AntiVirusHost], hit_result_sections: List[AvHitSection], result: Result) -> None:
@@ -345,8 +499,8 @@ class AntiVirus(ServiceBase):
         for result_section in hit_result_sections:
             result.add_section(result_section)
         if len(hit_result_sections) < len(hosts):
-            no_result_hosts = [host.group for result_section in hit_result_sections
-                               for host in hosts if host.group not in result_section.body]
+            host_groups = [host.group for host in hosts]
+            no_result_hosts = [host_group for host_group in host_groups if not any(host_group in result_section.body for result_section in hit_result_sections)]
             no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
                                           body_format=BODY_FORMAT.KEY_VALUE,
                                           body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
