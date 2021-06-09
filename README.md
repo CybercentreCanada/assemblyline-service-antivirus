@@ -75,6 +75,7 @@ av_config:
         via_proxy: True
         virus_name_header: "X-Virus-Name"
         scan_endpoint: "filescanner"
+      update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
