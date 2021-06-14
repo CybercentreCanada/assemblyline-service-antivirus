@@ -163,12 +163,13 @@ class TestAntiVirusHost:
         assert type(avhost_icap_with_no_details.icap_scan_details) == ICAPScanDetails
         assert avhost_icap_with_no_details.icap_scan_details.virus_name_header == "X-Virus-ID"
         assert avhost_icap_with_no_details.icap_scan_details.scan_endpoint == ""
+        assert avhost_icap_with_no_details.icap_scan_details.no_version is False
         assert avhost_icap_with_no_details.http_scan_details is None
         assert avhost_icap_with_no_details.update_period == 100
         assert type(avhost_icap_with_no_details.client) == IcapClient
         assert avhost_icap_with_no_details.sleeping is False
 
-        avhost_icap_with_details = antivirushost_class("blah", "blah", 8008, "icap", 100, icap_scan_details={"virus_name_header": "blah", "scan_endpoint": "blah"})
+        avhost_icap_with_details = antivirushost_class("blah", "blah", 8008, "icap", 100, icap_scan_details={"virus_name_header": "blah", "scan_endpoint": "blah", "no_version": True})
         assert avhost_icap_with_details.group == "blah"
         assert avhost_icap_with_details.ip == "blah"
         assert avhost_icap_with_details.port == 8008
@@ -177,6 +178,7 @@ class TestAntiVirusHost:
         assert type(avhost_icap_with_details.icap_scan_details) == ICAPScanDetails
         assert avhost_icap_with_details.icap_scan_details.virus_name_header == "blah"
         assert avhost_icap_with_details.icap_scan_details.scan_endpoint == "blah"
+        assert avhost_icap_with_details.icap_scan_details.no_version is True
         assert avhost_icap_with_details.http_scan_details is None
         assert avhost_icap_with_details.update_period == 100
         assert type(avhost_icap_with_details.client) == IcapClient
@@ -249,17 +251,19 @@ class TestICAPScanDetails:
         no_details = ICAPScanDetails()
         assert no_details.virus_name_header == "X-Virus-ID"
         assert no_details.scan_endpoint == ""
+        assert no_details.no_version is False
 
-        with_details = ICAPScanDetails("blah", "blah")
+        with_details = ICAPScanDetails("blah", "blah", True)
         assert with_details.virus_name_header == "blah"
         assert with_details.scan_endpoint == "blah"
+        assert with_details.no_version is True
 
     @staticmethod
     def test_eq():
         from antivirus import ICAPScanDetails
         icap1 = ICAPScanDetails()
         icap2 = ICAPScanDetails()
-        icap3 = ICAPScanDetails("blah", "blah")
+        icap3 = ICAPScanDetails("blah", "blah", True)
         assert icap1 == icap2
         assert icap1 != icap3
 
@@ -433,6 +437,9 @@ class TestAntiVirus:
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
         assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", "blah", av_host_icap)
 
+        av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100, icap_scan_details={"no_version": True})
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", None, av_host_icap)
+
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100)
@@ -442,6 +449,7 @@ class TestAntiVirus:
         assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ('{"Via": "(blah)"}', "blah", av_host_http)
 
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
+            av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
             assert av_host_icap.sleeping is False
             antivirus_class_instance.retry_period = 2
             assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (None, "blah", av_host_icap)
