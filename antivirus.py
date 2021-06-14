@@ -24,6 +24,7 @@ VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
 DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS = 500  # in milliseconds
 VERSION_REGEX = r"(?<=\().*?(?=\))"  # Grabs a substring found between parentheses
+CHARS_TO_STRIP = [";", ":", "="]
 
 # Specific signature names
 REVISED_SIG_SCORE_MAP = {}
@@ -114,15 +115,17 @@ class ICAPScanDetails:
     """
     This class contains details regarding scanning and parsing a file via ICAP
     """
-    def __init__(self, virus_name_header: str = "X-Virus-ID", scan_endpoint: str = "") -> None:
+    def __init__(self, virus_name_header: str = "X-Virus-ID", scan_endpoint: str = "", no_version: bool = False) -> None:
         """
         This method initializes the ICAPScanDetails class
         @param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
         @param scan_endpoint: The URI endpoint at which the service is listening for file contents to be submitted or OPTIONS to be queried.
+        @param no_version: A boolean indicating if a product version will be returned if you query OPTIONS.
         @return: None
         """
         self.virus_name_header = virus_name_header
         self.scan_endpoint = scan_endpoint
+        self.no_version = no_version
 
     def __eq__(self, other):
         """
@@ -195,6 +198,9 @@ class AvHitSection(ResultSection):
         @param heur_id: Essentially an integer flag that indicates if the scanned file is "infected" or "suspicious"
         @return: None
         """
+        for char_to_strip in CHARS_TO_STRIP:
+            virus_name = virus_name.replace(char_to_strip, "")
+
         title = f"{av_name} identified the file as {virus_name}"
         json_body = dict(
             av_name=av_name,
@@ -338,7 +344,7 @@ class AntiVirus(ServiceBase):
         version: Optional[str] = None
         try:
             if host.method == ICAP_METHOD:
-                version = host.client.options_respmod()
+                version = host.client.options_respmod() if not host.icap_scan_details.no_version else None
                 results = host.client.scan_data(file_contents, file_name)
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"

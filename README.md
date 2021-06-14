@@ -7,6 +7,8 @@ So far, we have tested with the following:
   - https://www.kaspersky.com/scan-engine
 - McAfee Web Gateway with ICAP and HTTP turned on: McAfee Web Gateway 9.2.2 build 33635
   - https://docs.mcafee.com/bundle/web-gateway-9.2.x-product-guide
+- ESET File Security For Linux x64 v8.0.375.0, with "Remote scanning - ICAP" enabled
+  - https://help.eset.com/efs/8/en-US/
 
 In theory, any antivirus product will work with this service as long as it is configured for ICAP or HTTP requests. 
 
@@ -17,7 +19,7 @@ failures so that we can adapt the service!
 ### Things you need:
 - The antivirus product must be setup and ready to accept files (via HTTP or ICAP). You are in charge of setting up the 
   antivirus product, yay responsibility!
-- `product`: A unique name for each antivirus product (Kaspersky, McAfee, etc.)
+- `product`: A unique name for each antivirus product (Kaspersky, McAfee, ESET, etc.)
 - `ip` & `port`: The IP address and port of at least one host that is serving each antivirus product.
 - `update_period`: The period/interval (in minutes) in which the antivirus product host polls for updates.
 
@@ -76,12 +78,23 @@ av_config:
         virus_name_header: "X-Virus-Name"
         scan_endpoint: "filescanner"
       update_period: 240
+
+    - product: "ESET"
+      hosts:
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        icap_scan_details:
+          no_version: true
+          virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
+        update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
 #### ICAP
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.
 - `scan_endpoint`: The URI endpoint at which the service is listening for file contents to be submitted or OPTIONS to be queried.
+- `no_version`: A boolean indicating if a product version will be returned if you query OPTIONS.
 
 #### HTTP
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.
