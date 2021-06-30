@@ -1,8 +1,12 @@
 # AntiVirus Service
-This service facilitates the dispatching and result-parsing to any antivirus product.
+Provide integration of various anti-virus product with the Assemblyline platform. This service provide multi-engine capability by connecting to multiple product concurrently and can round robin between nodes of the same product to provide high availability and scale linearly for increased performance.
 
-## What antivirus products are supported?
-So far, we have tested with the following:
+In theory, any antivirus product will work with this service as long as it is configured for ICAP or HTTP requests. 
+If you have a different antivirus product other than what we have tested with, please let us know any successes or 
+failures so that we can adapt the service! 
+If you are a vendor and would like to see your product added below please reach to us at: contact[_at_]cyber.gc.ca.
+
+## What antivirus products have been tested?
 - Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP Mode and HTTP Mode
   - https://www.kaspersky.com/scan-engine
 - McAfee Web Gateway with ICAP and HTTP turned on: McAfee Web Gateway 9.2.2 build 33635
@@ -10,10 +14,7 @@ So far, we have tested with the following:
 - ESET File Security For Linux x64 v8.0.375.0, with "Remote scanning - ICAP" enabled
   - https://help.eset.com/efs/8/en-US/
 
-In theory, any antivirus product will work with this service as long as it is configured for ICAP or HTTP requests. 
 
-If you have a different antivirus product other than what we have tested with, please let us know any successes or 
-failures so that we can adapt the service!
 
 ## How to add an antivirus product?
 ### Things you need:
