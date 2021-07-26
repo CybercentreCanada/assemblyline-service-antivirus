@@ -10,6 +10,7 @@ from re import search
 
 from assemblyline.common.str_utils import safe_str
 from assemblyline.common.isotime import epoch_to_local
+from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
@@ -251,6 +252,13 @@ class AntiVirus(ServiceBase):
         self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
         self.check_completion_interval: float = 0.0
+        self.safelist_match: List[str] = []
+
+        try:
+            safelist = self.get_api_interface().get_safelist(["av.virus_name"])
+            [self.safelist_match.extend(match_list) for _, match_list in safelist.get('match', {}).items()]
+        except ServiceAPIError as e:
+            self.log.warning(f"Couldn't retrieve safelist from service: {e}. Continuing without it..")
 
     def start(self) -> None:
         products = self.config["av_config"].get("products", [])
@@ -281,6 +289,10 @@ class AntiVirus(ServiceBase):
             ]
             while not all(future.done() for future in futures):
                 sleep(self.check_completion_interval)
+
+        for result_section in av_hit_result_sections[:]:
+            if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
+                av_hit_result_sections.remove(result_section)
 
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
 
