@@ -296,6 +296,10 @@ class AntiVirus(ServiceBase):
             while not all(future.done() for future in futures):
                 sleep(self.check_completion_interval)
 
+        for result_section in av_hit_result_sections[:]:
+            if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
+                av_hit_result_sections.remove(result_section)
+
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
 
     @staticmethod
