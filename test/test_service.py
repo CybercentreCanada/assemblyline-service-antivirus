@@ -109,10 +109,11 @@ def antivirushost_class():
 
 
 @pytest.fixture
-def antivirus_class_instance():
+def antivirus_class_instance(mocker, dummy_api_interface):
     create_tmp_manifest()
     try:
         from antivirus import AntiVirus
+        mocker.patch.object(AntiVirus, "get_api_interface", return_value=dummy_api_interface)
         yield AntiVirus()
     finally:
         remove_tmp_manifest()
@@ -143,6 +144,18 @@ def dummy_requests_class_instance():
             self.text = text
             self.headers = {"Via": "(blah)"}
     return DummyRequests
+
+
+@pytest.fixture
+def dummy_api_interface():
+    class DummyApiInterface(object):
+        def __int__(self):
+            pass
+
+        @staticmethod
+        def get_safelist(*args):
+            return {}
+    return DummyApiInterface
 
 
 class TestAntiVirusHost:
@@ -303,6 +316,75 @@ class TestHTTPScanDetails:
         http3 = HTTPScanDetails("json")
         assert http1 == http2
         assert http1 != http3
+
+
+class TestAvHitSection:
+    @classmethod
+    def setup_class(cls):
+        create_tmp_manifest()
+
+    @classmethod
+    def teardown_class(cls):
+        remove_tmp_manifest()
+
+    @staticmethod
+    def test_init():
+        from json import dumps
+        from assemblyline_v4_service.common.result import BODY_FORMAT, ResultSection, Heuristic
+        from antivirus import AvHitSection
+        av_name = "blah"
+        av_version = "blah"
+        virus_name = "blah"
+        engine = {}
+        heur_id = 1
+        sig_score_rev_map = {}
+        kw_score_rev_map = {}
+        safelist_match = []
+        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
+                                     kw_score_rev_map, safelist_match)
+        correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
+        correct_result_section.heuristic = Heuristic(1)
+        correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
+        correct_result_section.tags = {"av.virus_name": [virus_name]}
+        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "infected", "av_version": av_version})
+        correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
+        assert check_section_equality(actual_res_sec, correct_result_section)
+
+        temp_virus_name = ";:blah="
+        engine = {"version": "blah", "def_time": 1}
+        heur_id = 2
+        safelist_match = ["blah"]
+        actual_res_sec = AvHitSection(av_name, av_version, temp_virus_name, engine, heur_id, sig_score_rev_map,
+                                      kw_score_rev_map, safelist_match)
+        correct_result_section.tags = {"av.virus_name": [virus_name], "av.heuristic": [f"{virus_name}"]}
+        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 0)
+        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        assert check_section_equality(actual_res_sec, correct_result_section)
+
+        kw_score_rev_map = {"bla": 1}
+        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
+                                      kw_score_rev_map, safelist_match)
+        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 1)
+        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        assert check_section_equality(actual_res_sec, correct_result_section)
+
+        kw_score_rev_map = {"bla": 1, "h": 2}
+        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
+                                      kw_score_rev_map, safelist_match)
+        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 2)
+        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        assert check_section_equality(actual_res_sec, correct_result_section)
+
+        sig_score_rev_map = {f"{av_name}.{virus_name}": 10}
+        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
+                                      kw_score_rev_map, safelist_match)
+        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 10)
+        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        assert check_section_equality(actual_res_sec, correct_result_section)
 
 
 class TestAntiVirus:
@@ -479,10 +561,10 @@ class TestAntiVirus:
         mocker.patch.object(AntiVirus, "_parse_http_results", return_value=["blah"])
         avhost_icap = AntiVirusHost("blah", "blah", 1, "icap", 1)
         avhost_http = AntiVirusHost("blah", "blah", 1, "http", 1)
-        assert AntiVirus._parse_result("blah", avhost_icap, "blah") == ["blah"]
-        assert AntiVirus._parse_result("blah", avhost_http, "http") == ["blah"]
+        assert AntiVirus._parse_result("blah", avhost_icap, "blah", {}, {}, []) == ["blah"]
+        assert AntiVirus._parse_result("blah", avhost_http, "http", {}, {}, []) == ["blah"]
         avhost_http.method = "blah"
-        assert AntiVirus._parse_result("blah", avhost_http, "http") == []
+        assert AntiVirus._parse_result("blah", avhost_http, "http", {}, {}, []) == []
 
     @staticmethod
     @pytest.mark.parametrize(
@@ -504,11 +586,11 @@ class TestAntiVirus:
         av_name = "blah"
         if not icap_result:
             with pytest.raises(Exception):
-                antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version)
+                antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, [])
             return
 
         if not expected_section_title:
-            assert antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version) == []
+            assert antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
@@ -516,7 +598,7 @@ class TestAntiVirus:
             correct_result_section.tags = expected_tags
             correct_result_section.body = expected_body
             correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_section = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", ["HEUR:"], version)
+            test_result_section = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
     @staticmethod
@@ -538,7 +620,7 @@ class TestAntiVirus:
         from assemblyline_v4_service.common.result import ResultSection, Heuristic, BODY_FORMAT
         av_name = "blah"
         if not expected_section_title:
-            assert antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", [], version) == []
+            assert antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
@@ -546,7 +628,7 @@ class TestAntiVirus:
             correct_result_section.tags = expected_tags
             correct_result_section.body = expected_body
             correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_section = antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", ["HEUR:"], version)
+            test_result_section = antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
     @staticmethod
@@ -557,7 +639,7 @@ class TestAntiVirus:
         AntiVirus._gather_results(hosts, [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
 
-        correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1)
+        correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1, {}, {}, [])
         AntiVirus._gather_results(hosts, [correct_av_result_section], dummy_result_class_instance)
         no_result_section2 = ResultSection(
             "Failed to Scan or No Threat Detected by AV Engine(s)",
