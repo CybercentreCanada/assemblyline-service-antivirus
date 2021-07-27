@@ -13,8 +13,14 @@ If you are a vendor and would like to see your product added below please reach 
   - https://docs.mcafee.com/bundle/web-gateway-9.2.x-product-guide
 - ESET File Security For Linux x64 v8.0.375.0, with "Remote scanning - ICAP" enabled
   - https://help.eset.com/efs/8/en-US/
-
-
+  
+## Service Options
+* **av_config**: Dictionary containing details that we will use for revising or omitting antivirus signature hits
+  * **products**: A list of antivirus products. See below for an in-depth description of this parameter. 
+  * **kw_score_revision_map**: A dictionary where the keys are the keywords that could be found in signatures, and the value is the revised score
+  * **sig_score_revision_map**: A dictionary where the keys are the signatures that you want to revise, and the values are the scores that the signatures will be revised to 
+* **retry_period**: If an antivirus product is down for whatever reason, this is the number of seconds that the service will wait before it tries to send a file to that antivirus product again
+* **check_completion_interval**: The wait time in milliseconds between checking if threads have completed
 
 ## How to add an antivirus product?
 ### Things you need:

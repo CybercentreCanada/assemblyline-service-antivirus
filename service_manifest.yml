@@ -38,6 +38,11 @@ config:
               scan_endpoint: "scan"
             method: "http"
             update_period: 240  # in minutes
+    # Specific keywords found in a signature name
+    kw_score_revision_map:
+    # Signature names are not valid YAML keys according to the Assemblyline
+    # ODM so we cannot use them in the heuristic signature_score_map. Hence why we're putting this here.
+    sig_score_revision_map:
   retry_period: 60  # in seconds
   check_completion_interval: 0  # in milliseconds
 
