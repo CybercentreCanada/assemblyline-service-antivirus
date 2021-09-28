@@ -7,6 +7,7 @@ from math import floor
 from requests import Session
 from base64 import b64encode
 from re import search
+from random import choice
 
 from assemblyline.common.str_utils import safe_str
 from assemblyline.common.isotime import epoch_to_local
@@ -588,17 +589,8 @@ class AntiVirus(ServiceBase):
         # First eliminate sleeping hosts
         hosts_that_are_awake = [host for host in hosts if not host.sleeping]
 
-        # Next choose the first host per group
-        for host in hosts_that_are_awake:
-            if host.group and host.group not in groups:
-                groups.add(host.group)
-                selected_hosts.append(host)
-            elif host.group and host.group in groups:
-                # Maybe next time!
-                # TODO determine queues on awake hosts in the same node set to determine which host to send a file to
-                pass
-            else:
-                # If the host does not have a group, then we definitely want to send files to it, because this
-                # indicates that the host is not part of a node set
-                selected_hosts.append(host)
+        # Next choose a random host from the group in order to evenly distribute traffic
+        groups = groups.union({host.group for host in hosts_that_are_awake})
+        for group in groups:
+            selected_hosts.append(choice([host for host in hosts if host.group == group]))
         return selected_hosts
