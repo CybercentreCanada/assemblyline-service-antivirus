@@ -592,5 +592,5 @@ class AntiVirus(ServiceBase):
         # Next choose a random host from the group in order to evenly distribute traffic
         groups = groups.union({host.group for host in hosts_that_are_awake})
         for group in groups:
-            selected_hosts.append(choice([host for host in hosts if host.group == group]))
+            selected_hosts.append(choice([host for host in hosts_that_are_awake if host.group == group]))
         return selected_hosts
