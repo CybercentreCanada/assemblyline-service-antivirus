@@ -684,5 +684,5 @@ class TestAntiVirus:
         additional_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         hosts = [different_group_av_host, sleeping_av_host, correct_av_host, additional_av_host]
         actual_hosts = AntiVirus._determine_hosts_to_use(hosts)
-        assert actual_hosts[0] == different_group_av_host
-        assert actual_hosts[1] == correct_av_host
+        assert different_group_av_host in actual_hosts
+        assert any(host in actual_hosts for host in [correct_av_host, additional_av_host])
