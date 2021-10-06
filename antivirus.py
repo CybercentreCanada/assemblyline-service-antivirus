@@ -381,6 +381,8 @@ class AntiVirus(ServiceBase):
                 if host.http_scan_details.post_data_type == POST_DATA:
                     resp = host.client.post(scan_url, data=file_contents)
                 elif host.http_scan_details.post_data_type == POST_JSON:
+                    # If we are posting to JSON, the file contents must be base64 encoded and converted to str
+                    file_contents = file_contents.decode("utf-8") if host.http_scan_details.base64_encode else b64encode(file_contents).decode("utf-8")
                     json_to_post = {host.http_scan_details.json_key_for_post: file_contents}
                     resp = host.client.post(scan_url, json=json_to_post)
 
