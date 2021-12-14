@@ -365,8 +365,8 @@ class AntiVirus(ServiceBase):
         try:
             if host.method == ICAP_METHOD:
                 version = host.client.options_respmod() if not host.icap_scan_details.no_version else None
-                # Remove spaces and non-ASCII characters from file name when using ICAP
-                results = host.client.scan_data(file_contents, file_name.replace(" ", "").encode("ascii", "ignore"))
+                # Remove spaces from file name when using ICAP
+                results = host.client.scan_data(file_contents, file_name.replace(" ", ""))
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
                 # Setting up the POST based on the user's configurations
