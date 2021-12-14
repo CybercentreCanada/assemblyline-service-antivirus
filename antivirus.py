@@ -291,7 +291,7 @@ class AntiVirus(ServiceBase):
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
-                executor.submit(self._thr_process_file, host, request.file_name, request.file_contents)
+                executor.submit(self._thr_process_file, host, request.sha256, request.file_contents)
                 for host in selected_hosts
             ]
             while not all(future.done() for future in futures):
@@ -327,11 +327,11 @@ class AntiVirus(ServiceBase):
             for product in products for host in product["hosts"]
         ]
 
-    def _thr_process_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes) -> None:
+    def _thr_process_file(self, host: AntiVirusHost, file_hash: str, file_contents: bytes) -> None:
         """
         This method handles the file scanning and result parsing
         @param host: The class instance representing an antivirus product
-        @param file_name: The name of the file to scan
+        @param file_hash: The hash of the file to scan
         @param file_contents: The contents of the file to scan
         @return: None
         """
@@ -339,7 +339,7 @@ class AntiVirus(ServiceBase):
         global av_hit_result_sections
 
         # Step 1: Scan file
-        result, version, host = self._scan_file(host, file_name, file_contents)
+        result, version, host = self._scan_file(host, file_hash, file_contents)
 
         # Step 2: Parse results
         av_version = self._parse_version(version, host.method) if version is not None else None
@@ -350,12 +350,12 @@ class AntiVirus(ServiceBase):
         for av_hit in av_hits:
             av_hit_result_sections.append(av_hit)
 
-    def _scan_file(self, host: AntiVirusHost, file_name: str, file_contents: bytes)\
+    def _scan_file(self, host: AntiVirusHost, file_hash: str, file_contents: bytes)\
             -> (Optional[str], Optional[str], AntiVirusHost):
         """
         This method scans the file and could get the product version using the host's client
         @param host: The class instance representing an antivirus product
-        @param file_name: The name of the file to scan
+        @param file_hash: The hash of the file to scan
         @param file_contents: The contents of the file to scan
         @return: The results from scanning the file, the results from querying the product version,
         the AntiVirusHost instance
@@ -363,10 +363,10 @@ class AntiVirus(ServiceBase):
         results: Optional[str] = None
         version: Optional[str] = None
         try:
+            self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")
             if host.method == ICAP_METHOD:
                 version = host.client.options_respmod() if not host.icap_scan_details.no_version else None
-                # Remove spaces from file name when using ICAP
-                results = host.client.scan_data(file_contents, file_name.replace(" ", ""))
+                results = host.client.scan_data(file_contents, file_hash)
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
                 # Setting up the POST based on the user's configurations
