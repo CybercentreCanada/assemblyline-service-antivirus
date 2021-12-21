@@ -398,7 +398,7 @@ class AntiVirus(ServiceBase):
                 elif resp is not None and not host.http_scan_details.result_in_headers:
                     results = resp.text
         except Exception as e:
-            self.log.info(f"{host.group} errored due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
+            self.log.warning(f"{host.group} errored due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
             Thread(target=host.sleep, args=[self.retry_period]).start()
         return results, version, host
 
