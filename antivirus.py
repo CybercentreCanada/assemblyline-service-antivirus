@@ -366,7 +366,11 @@ class AntiVirus(ServiceBase):
             self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")
             if host.method == ICAP_METHOD:
                 version = host.client.options_respmod() if not host.icap_scan_details.no_version else None
+                time_started = time()
                 results = host.client.scan_data(file_contents, file_hash)
+                time_elapsed = time() - time_started
+                if time_elapsed > 5:
+                    self.log.warning(f"{host.group} host {host.ip}:{host.port} took {time_elapsed}s to scan.")
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
                 # Setting up the POST based on the user's configurations
