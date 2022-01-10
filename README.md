@@ -13,6 +13,8 @@ If you are a vendor and would like to see your product added below please reach 
   - https://docs.mcafee.com/bundle/web-gateway-9.2.x-product-guide
 - ESET File Security For Linux x64 v8.0.375.0, with "Remote scanning - ICAP" enabled
   - https://help.eset.com/efs/8/en-US/
+- Bitdefender Security Server v6.2.4.11063, with ICAP scanning enabled
+  - https://www.bitdefender.com/business/support/en/77212-96386-security-server.html
   
 ## Service Options
 * **av_config**: Dictionary containing details that we will use for revising or omitting antivirus signature hits
@@ -94,6 +96,15 @@ av_config:
         icap_scan_details:
           no_version: true
           virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
+        update_period: 240
+
+    - product: "Bitdefender"
+      heuristic_analysis_keys:
+      - "Gen:Heur"
+      hosts:
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
         update_period: 240
 ```
 
