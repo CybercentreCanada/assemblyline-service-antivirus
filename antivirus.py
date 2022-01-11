@@ -287,9 +287,9 @@ class AntiVirus(ServiceBase):
         AntiVirus._determine_service_context(request, self.hosts)
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
         if not selected_hosts:
-            self.log.warning("All hosts are unavailable! Sleeping for 10s and trying again...")
-            sleep(10)
-            raise RecoverableError("All hosts are unavailable!")
+            message = "All hosts are unavailable!"
+            self.log.warning(message)
+            raise RecoverableError(message)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
