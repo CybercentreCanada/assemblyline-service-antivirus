@@ -9,7 +9,7 @@ stage: CORE
 category: Antivirus
 
 file_required: true
-timeout: 60
+timeout: 120
 disable_cache: false
 
 enabled: false
@@ -46,7 +46,6 @@ config:
     sig_score_revision_map:
       blahblahblah: 0
   retry_period: 60  # in seconds
-  check_completion_interval: 0  # in milliseconds
 
 heuristics:
   - heur_id: 1

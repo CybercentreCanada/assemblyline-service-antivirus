@@ -408,7 +408,6 @@ class TestAntiVirus:
     def test_init(antivirus_class_instance):
         assert antivirus_class_instance.hosts == []
         assert antivirus_class_instance.retry_period == 0
-        assert antivirus_class_instance.check_completion_interval == 0.0
 
     @staticmethod
     def test_start(antivirus_class_instance):
@@ -422,7 +421,6 @@ class TestAntiVirus:
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
         assert antivirus_class_instance.retry_period == 60
-        assert antivirus_class_instance.check_completion_interval == 0.0
 
         antivirus_class_instance.config["av_config"]["products"] = []
         with pytest.raises(ValueError):
