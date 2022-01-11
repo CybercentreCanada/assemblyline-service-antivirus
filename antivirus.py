@@ -1,6 +1,6 @@
 import json
 from typing import Optional, Dict, List, Any, Set
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Thread
 from time import sleep, time
 from math import floor
@@ -9,8 +9,9 @@ from base64 import b64encode
 from re import search
 from random import choice
 
-from assemblyline.common.str_utils import safe_str
+from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
+from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase
 from assemblyline_v4_service.common.icap import IcapClient
@@ -24,7 +25,6 @@ POST_JSON = "json"
 POST_DATA = "data"
 VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
-DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS = 500  # in milliseconds
 VERSION_REGEX = r"(?<=\().*?(?=\))"  # Grabs a substring found between parentheses
 CHARS_TO_STRIP = [";", ":", "="]
 
@@ -254,7 +254,6 @@ class AntiVirus(ServiceBase):
         super(AntiVirus, self).__init__(config)
         self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
-        self.check_completion_interval: float = 0.0
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
@@ -270,7 +269,6 @@ class AntiVirus(ServiceBase):
         self.kw_score_revision_map = self.config["av_config"].get("kw_score_revision_map", {})
         self.sig_score_revision_map = self.config["av_config"].get("sig_score_revision_map", {})
         self.retry_period = self.config.get("retry_period", DEFAULT_WAIT_TIME_BETWEEN_RETRIES)
-        self.check_completion_interval = self.config.get("check_completion_interval", DEFAULT_WAIT_TIME_BETWEEN_COMPLETION_CHECKS) / 1000  # Converting to seconds
         if len(products) < 1:
             raise ValueError(f"There does not appear to be any products loaded in the 'products' config "
                              f"variable in the service configurations.")
@@ -288,14 +286,22 @@ class AntiVirus(ServiceBase):
         max_workers = len(self.hosts)
         AntiVirus._determine_service_context(request, self.hosts)
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
+        if not selected_hosts:
+            self.log.warning("All hosts are unavailable! Sleeping for 10s and trying again...")
+            sleep(10)
+            raise RecoverableError("All hosts are unavailable!")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(self._thr_process_file, host, request.sha256, request.file_contents)
+            futures = {
+                executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
                 for host in selected_hosts
-            ]
-            while not all(future.done() for future in futures):
-                sleep(self.check_completion_interval)
+            }
+            # We need at least 30 seconds for result processing
+            acceptable_timeout = self.service_attributes.timeout - 30
+            sets = wait(futures, timeout=acceptable_timeout)
+            for future in sets.not_done:
+                host = futures[future]
+                self.log.warning(f"{host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
 
         for result_section in av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
@@ -366,11 +372,7 @@ class AntiVirus(ServiceBase):
             self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")
             if host.method == ICAP_METHOD:
                 version = host.client.options_respmod() if not host.icap_scan_details.no_version else None
-                time_started = time()
                 results = host.client.scan_data(file_contents, file_hash)
-                time_elapsed = time() - time_started
-                if time_elapsed > 5:
-                    self.log.warning(f"{host.group} host {host.ip}:{host.port} took {time_elapsed}s to scan.")
             elif host.method == HTTP_METHOD:
                 base_url = f"{HTTP_METHOD}://{host.ip}:{host.port}"
                 # Setting up the POST based on the user's configurations
