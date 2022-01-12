@@ -252,6 +252,7 @@ av_hit_result_sections: List[AvHitSection] = []
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
+        self.log.debug("Initializing the AntiVirus service...")
         self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
         self.safelist_match: List[str] = []
@@ -265,6 +266,7 @@ class AntiVirus(ServiceBase):
             self.log.warning(f"Couldn't retrieve safelist from service: {e}. Continuing without it..")
 
     def start(self) -> None:
+        self.log.debug("Starting the AntiVirus service...")
         products = self.config["av_config"].get("products", [])
         self.kw_score_revision_map = self.config["av_config"].get("kw_score_revision_map", {})
         self.sig_score_revision_map = self.config["av_config"].get("sig_score_revision_map", {})
@@ -272,42 +274,52 @@ class AntiVirus(ServiceBase):
         if len(products) < 1:
             raise ValueError(f"There does not appear to be any products loaded in the 'products' config "
                              f"variable in the service configurations.")
+        self.log.debug("Creating the host objects based on the provided product configurations")
         self.hosts = self._get_hosts(products)
         if len(self.hosts) < 1:
             raise ValueError(f"There does not appear to be any hosts loaded in the 'products' config "
                              f"variable in the service configurations.")
 
     def execute(self, request: ServiceRequest) -> None:
+        self.log.debug("Executing the AntiVirus service...")
         global av_hit_result_sections
         # Reset globals for each request
         av_hit_result_sections = []
 
         request.result = Result()
         max_workers = len(self.hosts)
+        self.log.debug("Determining the service context.")
         AntiVirus._determine_service_context(request, self.hosts)
+        self.log.debug("Determining the hosts to use.")
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
         if not selected_hosts:
             message = "All hosts are unavailable!"
             self.log.warning(message)
             raise RecoverableError(message)
 
+        self.log.debug("Using the ThreadPoolExecutor to submit tasks to the thread pool")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
                 for host in selected_hosts
             }
+            self.log.debug(f"{len(selected_hosts)} tasks have been submitted to the thread pool")
             # We need at least 30 seconds for result processing
             acceptable_timeout = self.service_attributes.timeout - 30
             sets = wait(futures, timeout=acceptable_timeout)
+            self.log.debug("Stopped waiting for the thread pool to complete")
             for future in sets.not_done:
                 host = futures[future]
                 self.log.warning(f"{host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
 
+        self.log.debug("Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
                 av_hit_result_sections.remove(result_section)
 
+        self.log.debug(f"Adding the {len(av_hit_result_sections)} AV hit result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
+        self.log.debug("Completed execution!")
 
     @staticmethod
     def _get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
