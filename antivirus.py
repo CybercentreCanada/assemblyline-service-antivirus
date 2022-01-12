@@ -281,45 +281,45 @@ class AntiVirus(ServiceBase):
                              f"variable in the service configurations.")
 
     def execute(self, request: ServiceRequest) -> None:
-        self.log.debug("Executing the AntiVirus service...")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
         global av_hit_result_sections
         # Reset globals for each request
         av_hit_result_sections = []
 
         request.result = Result()
         max_workers = len(self.hosts)
-        self.log.debug("Determining the service context.")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Determining the service context.")
         AntiVirus._determine_service_context(request, self.hosts)
-        self.log.debug("Determining the hosts to use.")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
         if not selected_hosts:
             message = "All hosts are unavailable!"
-            self.log.warning(message)
+            self.log.warning(f"[{request.sid}/{request.sha256}] {message}")
             raise RecoverableError(message)
 
-        self.log.debug("Using the ThreadPoolExecutor to submit tasks to the thread pool")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
                 for host in selected_hosts
             }
-            self.log.debug(f"{len(selected_hosts)} tasks have been submitted to the thread pool")
+            self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool")
             # We need at least 30 seconds for result processing
             acceptable_timeout = self.service_attributes.timeout - 30
             sets = wait(futures, timeout=acceptable_timeout)
-            self.log.debug("Stopped waiting for the thread pool to complete")
+            self.log.debug(f"[{request.sid}/{request.sha256}] Stopped waiting for the thread pool to complete")
             for future in sets.not_done:
                 host = futures[future]
-                self.log.warning(f"{host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
+                self.log.warning(f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
 
-        self.log.debug("Checking if any virus names should be safelisted")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
                 av_hit_result_sections.remove(result_section)
 
-        self.log.debug(f"Adding the {len(av_hit_result_sections)} AV hit result sections to the Result")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
-        self.log.debug("Completed execution!")
+        self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     @staticmethod
     def _get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
