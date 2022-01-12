@@ -298,19 +298,24 @@ class AntiVirus(ServiceBase):
             raise RecoverableError(message)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool")
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
-                for host in selected_hosts
-            }
-            self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool")
-            # We need at least 30 seconds for result processing
-            acceptable_timeout = self.service_attributes.timeout - 30
-            sets = wait(futures, timeout=acceptable_timeout)
-            self.log.debug(f"[{request.sid}/{request.sha256}] Stopped waiting for the thread pool to complete")
-            for future in sets.not_done:
-                host = futures[future]
-                self.log.warning(f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
+                    for host in selected_hosts
+                }
+                self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool")
+                # We need at least 30 seconds for result processing
+                acceptable_timeout = self.service_attributes.timeout - 30
+                sets = wait(futures, timeout=acceptable_timeout)
+                self.log.debug(f"[{request.sid}/{request.sha256}] Stopped waiting for the thread pool to complete")
+                for future in sets.not_done:
+                    host = futures[future]
+                    self.log.warning(f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
+        except Exception as e:
+            message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
+            self.log.error(message)
+            raise RecoverableError(message)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
