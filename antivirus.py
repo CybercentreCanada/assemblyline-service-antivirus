@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Dict, List, Any, Set
+from typing import Optional, Dict, List, Any, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Thread
 from time import sleep, time
@@ -25,7 +25,8 @@ POST_JSON = "json"
 POST_DATA = "data"
 VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
-VERSION_REGEX = r"(?<=\().*?(?=\))"  # Grabs a substring found between parentheses
+# Grabs a substring found between parentheses
+VERSION_REGEX = r"(?<=\().*?(?=\))"
 CHARS_TO_STRIP = [";", ":", "="]
 
 
@@ -33,6 +34,7 @@ class AntiVirusHost:
     """
     This class represents the antivirus product host and how it should be interacted with
     """
+
     def __init__(self, group: str, ip: str, port: int, method: str, update_period: int,
                  heuristic_analysis_keys: List[str] = None, icap_scan_details: Dict[str, Any] = None,
                  http_scan_details: Dict[str, Any] = None) -> None:
@@ -111,6 +113,7 @@ class ICAPScanDetails:
     """
     This class contains details regarding scanning and parsing a file via ICAP
     """
+
     def __init__(self, virus_name_header: str = "X-Virus-ID", scan_endpoint: str = "", no_version: bool = False) -> None:
         """
         This method initializes the ICAPScanDetails class
@@ -138,6 +141,7 @@ class HTTPScanDetails:
     """
     This class contains details regarding scanning and parsing a file via HTTP
     """
+
     def __init__(self, post_data_type: str = "data", json_key_for_post: str = "file", result_in_headers: bool = False,
                  via_proxy: bool = False, virus_name_header: str = "X-Virus-ID", version_endpoint: str = "",
                  scan_endpoint: str = "", base64_encode: bool = False) -> None:
@@ -184,6 +188,7 @@ class AvHitSection(ResultSection):
     """
     This class represents an Assemblyline Service ResultSection specifically for antivirus products
     """
+
     def __init__(self, av_name: str, av_version: Optional[str], virus_name: str, engine: Dict[str, str],
                  heur_id: int, sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
                  safelist_match: List[str]) -> None:
@@ -258,6 +263,7 @@ class AntiVirus(ServiceBase):
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
+        self.selected_hosts: List[AntiVirusHost] = []
 
         try:
             safelist = self.get_api_interface().get_safelist(["av.virus_name"])
@@ -277,8 +283,10 @@ class AntiVirus(ServiceBase):
         self.log.debug("Creating the host objects based on the provided product configurations")
         self.hosts = self._get_hosts(products)
         if len(self.hosts) < 1:
-            raise ValueError(f"There does not appear to be any hosts loaded in the 'products' config "
-                             f"variable in the service configurations.")
+            raise ValueError("There does not appear to be any hosts loaded in the 'products' config "
+                             "variable in the service configurations.")
+        self.log.debug("Determining the hosts to use in start()")
+        self.selected_hosts = self._determine_hosts_to_use(self.hosts)
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
@@ -290,21 +298,18 @@ class AntiVirus(ServiceBase):
         max_workers = len(self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the service context.")
         AntiVirus._determine_service_context(request, self.hosts)
-        self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
-        selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
-        if not selected_hosts:
-            message = "All hosts are unavailable!"
-            self.log.warning(f"[{request.sid}/{request.sha256}] {message}")
-            raise RecoverableError(message)
+        # If all hosts that have been selected are still awake, then move on!
+        if not all(not host.sleeping for host in self.selected_hosts):
+            self.selected_hosts = self._determine_hosts_to_use(self.hosts)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool")
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
-                    for host in selected_hosts
+                    for host in self.selected_hosts
                 }
-                self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool")
+                self.log.debug(f"[{request.sid}/{request.sha256}] {len(self.selected_hosts)} tasks have been submitted to the thread pool")
                 # We need at least 30 seconds for result processing
                 acceptable_timeout = self.service_attributes.timeout - 30
                 sets = wait(futures, timeout=acceptable_timeout)
@@ -317,13 +322,20 @@ class AntiVirus(ServiceBase):
             self.log.error(message)
             raise Exception(message)
 
+        # If all hosts that have been selected are sleeping, resubmit!
+        if all(host.sleeping for host in self.selected_hosts):
+            details = [f"{host.group} {host.ip}:{host.port}" for host in self.selected_hosts]
+            message = f"Selected hosts {','.join(details)} are all sleeping. Trying again with different hosts!"
+            self.log.warning(message)
+            raise RecoverableError(message)
+
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
                 av_hit_result_sections.remove(result_section)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
+        AntiVirus._gather_results(self.selected_hosts, av_hit_result_sections, request.result)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     @staticmethod
@@ -374,7 +386,7 @@ class AntiVirus(ServiceBase):
             av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str, file_contents: bytes)\
-            -> (Optional[str], Optional[str], AntiVirusHost):
+            -> Tuple[Optional[str], Optional[str], AntiVirusHost]:
         """
         This method scans the file and could get the product version using the host's client
         @param host: The class instance representing an antivirus product
@@ -602,8 +614,7 @@ class AntiVirus(ServiceBase):
         upper_range = lower_range + min_update_period
         request.set_service_context(f"Engine Update Range: {epoch_to_local(lower_range)} - {epoch_to_local(upper_range)}")
 
-    @staticmethod
-    def _determine_hosts_to_use(hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:
+    def _determine_hosts_to_use(self, hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:
         """
         This method takes a list of hosts, and determines which hosts are going to have files sent to them
         @param hosts: the list of antivirus hosts registered in the service
@@ -614,9 +625,25 @@ class AntiVirus(ServiceBase):
 
         # First eliminate sleeping hosts
         hosts_that_are_awake = [host for host in hosts if not host.sleeping]
+        if not hosts_that_are_awake:
+            message = "All hosts are unavailable!"
+            self.log.warning(message)
+            raise Exception(message)
+
+        # Now, if we have selected hosts already, only replace sleeping hosts
+        if self.selected_hosts:
+            selected_hosts.extend([host for host in self.selected_hosts if not host.sleeping])
+            groups = [host.group for host in self.selected_hosts if host.sleeping]
+        else:
+            groups = groups.union({host.group for host in hosts_that_are_awake})
 
         # Next choose a random host from the group in order to evenly distribute traffic
-        groups = groups.union({host.group for host in hosts_that_are_awake})
         for group in groups:
             selected_hosts.append(choice([host for host in hosts_that_are_awake if host.group == group]))
+
+        if not selected_hosts:
+            message = "All hosts are unavailable! Trying again"
+            self.log.warning(message)
+            raise RecoverableError(message)
+
         return selected_hosts
