@@ -8,6 +8,7 @@ from requests import Session
 from base64 import b64encode
 from re import search
 from random import choice
+from socket import socket
 
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
@@ -286,7 +287,13 @@ class AntiVirus(ServiceBase):
             raise ValueError("There does not appear to be any hosts loaded in the 'products' config "
                              "variable in the service configurations.")
         self.log.debug("Determining the hosts to use in start()")
-        self.selected_hosts = self._determine_hosts_to_use(self.hosts)
+        all_hosts_are_down = True
+        retries = 0
+        while all_hosts_are_down and retries < 3:
+            self.selected_hosts = self._determine_hosts_to_use(self.hosts)
+            all_hosts_are_down = self._are_selected_hosts_down(self.selected_hosts)
+            sleep(1)
+            retries += 1
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
@@ -647,3 +654,16 @@ class AntiVirus(ServiceBase):
             raise RecoverableError(message)
 
         return selected_hosts
+
+    def _are_selected_hosts_down(self, selected_hosts: List[AntiVirusHost]) -> bool:
+        s = socket()
+        for host in selected_hosts:
+            try:
+                s.connect((host.ip, host.port))
+            except Exception as e:
+                self.log.warning(f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
+                Thread(target=host.sleep, args=[self.retry_period]).start()
+                return True
+            finally:
+                s.close()
+        return False
