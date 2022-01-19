@@ -550,12 +550,12 @@ class TestAntiVirus:
             ("blah", "http", "blah"),
         ]
     )
-    def test_parse_version(version_result, method, correct_result, antivirus_class_instance):
+    def test_parse_version(version_result, method, correct_result):
         from antivirus import AntiVirus
         assert AntiVirus._parse_version(version_result, method) == correct_result
 
     @staticmethod
-    def test_parse_result(antivirus_class_instance, mocker):
+    def test_parse_result(mocker):
         from antivirus import AntiVirus, AntiVirusHost
         mocker.patch.object(AntiVirus, "_parse_icap_results", return_value=["blah"])
         mocker.patch.object(AntiVirus, "_parse_http_results", return_value=["blah"])
@@ -574,6 +574,9 @@ class TestAntiVirus:
             ("blah\nblah\nblah\nblah", "", "", "", {}, 0, {}),
             ("blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
              {"av.virus_name": ["virus_name"]}, 1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
+                                                   '"infected", "av_version": "blah"}'),
+            ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+             {"av.virus_name": ["Unknown"]}, 1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
                                                    '"infected", "av_version": "blah"}'),
             ("blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur", "blah identified the file as virus_heur",
              {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]}, 2,
@@ -598,8 +601,8 @@ class TestAntiVirus:
             correct_result_section.tags = expected_tags
             correct_result_section.body = expected_body
             correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_section = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", ["HEUR:"], version, {}, {}, [])
-            assert check_section_equality(test_result_section[0], correct_result_section)
+            test_result_sections = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
+            assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
     @pytest.mark.parametrize(
