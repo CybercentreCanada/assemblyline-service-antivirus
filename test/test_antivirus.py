@@ -402,7 +402,8 @@ class TestAntiVirus:
         samples_path = os.path.join(TEST_DIR, "samples")
         for sample in os.listdir(samples_path):
             temp_sample_path = os.path.join("/tmp", sample)
-            os.remove(temp_sample_path)
+            if os.path.exists(temp_sample_path):
+                os.remove(temp_sample_path)
 
     @staticmethod
     def test_init(antivirus_class_instance):
@@ -415,7 +416,7 @@ class TestAntiVirus:
         products = [{"product": "blah", "hosts": [{"ip": "blah", "port": 1, "method": "icap", "update_period": 1}]}]
         antivirus_class_instance.config["av_config"]["products"] = products
         correct_hosts = [
-            AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], product.get("heuristic_analysis_keys"), host.get("icap_scan_details"), host.get("http_scan_details"))
+            AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("file_size_limit", 0), product.get("heuristic_analysis_keys"), host.get("icap_scan_details"), host.get("http_scan_details"))
             for product in products for host in product["hosts"]
         ]
         antivirus_class_instance.start()
@@ -479,7 +480,7 @@ class TestAntiVirus:
         assert test_result_response == correct_result_response
 
     @staticmethod
-    def test_get_hosts(antivirus_class_instance):
+    def test_get_hosts():
         from antivirus import AntiVirus, AntiVirusHost
         products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"virus_name_header": "blah", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
         correct_hosts = [AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], icap_scan_details=host["icap_scan_details"])
@@ -494,7 +495,7 @@ class TestAntiVirus:
     def test_thr_process_file(antivirus_class_instance, mocker):
         from antivirus import AntiVirus, AntiVirusHost, av_hit_result_sections
         avhost = AntiVirusHost("blah", "blah", 1, "icap", 1)
-        mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, None))
+        mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, avhost))
         mocker.patch.object(AntiVirus, "_parse_version", return_value=None)
         mocker.patch.object(AntiVirus, "_parse_result", return_value=[])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
@@ -512,6 +513,7 @@ class TestAntiVirus:
         from time import sleep
         from requests.sessions import Session
         from assemblyline_v4_service.common.icap import IcapClient
+        from antivirus import ERROR_RESULT
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
@@ -532,7 +534,7 @@ class TestAntiVirus:
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
             assert av_host_icap.sleeping is False
             antivirus_class_instance.retry_period = 2
-            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (None, "blah", av_host_icap)
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (ERROR_RESULT, "blah", av_host_icap)
             assert av_host_icap.sleeping is True
             sleep(3)
             assert av_host_icap.sleeping is False
@@ -634,18 +636,26 @@ class TestAntiVirus:
         from antivirus import AntiVirus, AntiVirusHost, AvHitSection
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", 1), AntiVirusHost("blah2", "blah", 1234, "icap", 1)]
-        AntiVirus._gather_results(hosts, [], dummy_result_class_instance)
+        AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
 
+        AntiVirus._gather_results(hosts, [], ["blah1", "blah2"], dummy_result_class_instance)
+        no_result_section = ResultSection(
+            "Failed to Scan or No Threat Detected by AV Engine(s)",
+            body_format=BODY_FORMAT.KEY_VALUE,
+            body=json.dumps(dict(errors_during_scanning=[host.group for host in hosts]))
+        )
+        assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section)
+
         correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1, {}, {}, [])
-        AntiVirus._gather_results(hosts, [correct_av_result_section], dummy_result_class_instance)
+        AntiVirus._gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
         no_result_section2 = ResultSection(
             "Failed to Scan or No Threat Detected by AV Engine(s)",
             body_format=BODY_FORMAT.KEY_VALUE,
             body=json.dumps(dict(no_threat_detected=[host.group for host in hosts[:1]]))
         )
-        assert check_section_equality(dummy_result_class_instance.sections[0], correct_av_result_section)
-        assert check_section_equality(dummy_result_class_instance.sections[1], no_result_section2)
+        assert check_section_equality(dummy_result_class_instance.sections[1], correct_av_result_section)
+        assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
 
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
@@ -680,7 +690,30 @@ class TestAntiVirus:
         sleeping_av_host.sleeping = True
         correct_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         additional_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
-        hosts = [different_group_av_host, sleeping_av_host, correct_av_host, additional_av_host]
-        actual_hosts = AntiVirus._determine_hosts_to_use(hosts)
+        av_host_with_file_size_limit = AntiVirusHost("blah3", "blah", 1, "icap", 1, file_size_limit=30000000)
+        hosts = [different_group_av_host, sleeping_av_host, correct_av_host, additional_av_host, av_host_with_file_size_limit]
+        file_size = 50000000
+        actual_hosts = AntiVirus._determine_hosts_to_use(hosts, file_size)
         assert different_group_av_host in actual_hosts
         assert any(host in actual_hosts for host in [correct_av_host, additional_av_host])
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "max_service_timeout, file_size, expected_result",
+        [
+            (1, 1, 30),
+            (300, 1, 30),
+            (600, 1, 30),
+            (300, 100000000, 290),
+            (600, 100000000, 590),
+            (300, 50000000, 235),
+            (600, 50000000, 385),
+            (300, 16000000, 123),
+            (600, 16000000, 171),
+            (300, 6000000, 90),
+            (600, 6000000, 108),
+        ]
+    )
+    def test_determine_scan_timeout_by_size(max_service_timeout, file_size, expected_result):
+        from antivirus import AntiVirus
+        assert AntiVirus._determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result

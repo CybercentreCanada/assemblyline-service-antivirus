@@ -1,9 +1,9 @@
 # AntiVirus Service
 Provide integration of various anti-virus product with the Assemblyline platform. This service provide multi-engine capability by connecting to multiple product concurrently and can round robin between nodes of the same product to provide high availability and scale linearly for increased performance.
 
-In theory, any antivirus product will work with this service as long as it is configured for ICAP or HTTP requests. 
-If you have a different antivirus product other than what we have tested with, please let us know any successes or 
-failures so that we can adapt the service! 
+In theory, any antivirus product will work with this service as long as it is configured for ICAP or HTTP requests.
+If you have a different antivirus product other than what we have tested with, please let us know any successes or
+failures so that we can adapt the service!
 If you are a vendor and would like to see your product added below please reach to us at: contact[_at_]cyber.gc.ca.
 
 ## What antivirus products have been tested?
@@ -15,46 +15,49 @@ If you are a vendor and would like to see your product added below please reach 
   - https://help.eset.com/efs/8/en-US/
 - Bitdefender Security Server v6.2.4.11063, with ICAP scanning enabled
   - https://www.bitdefender.com/business/support/en/77212-96386-security-server.html
-  
+
 ## Service Options
 * **av_config**: Dictionary containing details that we will use for revising or omitting antivirus signature hits
-  * **products**: A list of antivirus products. See below for an in-depth description of this parameter. 
+  * **products**: A list of antivirus products. See below for an in-depth description of this parameter.
   * **kw_score_revision_map**: A dictionary where the keys are the keywords that could be found in signatures, and the value is the revised score
-  * **sig_score_revision_map**: A dictionary where the keys are the signatures that you want to revise, and the values are the scores that the signatures will be revised to 
+  * **sig_score_revision_map**: A dictionary where the keys are the signatures that you want to revise, and the values are the scores that the signatures will be revised to
 * **retry_period**: If an antivirus product is down for whatever reason, this is the number of seconds that the service will wait before it tries to send a file to that antivirus product again
 * **check_completion_interval**: The wait time in milliseconds between checking if threads have completed
 
 ## How to add an antivirus product?
 ### Things you need:
-- The antivirus product must be setup and ready to accept files (via HTTP or ICAP). You are in charge of setting up the 
+- The antivirus product must be setup and ready to accept files (via HTTP or ICAP). You are in charge of setting up the
   antivirus product, yay responsibility!
 - `product`: A unique name for each antivirus product (Kaspersky, McAfee, ESET, etc.)
 - `ip` & `port`: The IP address and port of at least one host that is serving each antivirus product.
 - `update_period`: The period/interval (in minutes) in which the antivirus product host polls for updates.
+- [OPTIONAL] `file_size_limit`: The limit of the file size, in bytes, that the host can process within the service timeout
+
 
 Example of `av_config` from service_manifest.yaml in YAML form
 ```
 av_config:
   products:
   - product: "Kasperksy"
-  
-    # A list of strings that are found in the antivirus product's signatures that indicate that 
-    # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of 
+
+    # A list of strings that are found in the antivirus product's signatures that indicate that
+    # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of
     # Assemblyline, rather than "Malicious".
     heuristic_analysis_keys:
     - "HEUR:"
-    
+
     # A list of hosts
     hosts:
-    
+
     # ICAP host
     - ip: "<ip>"
       port: 1344
       method: "icap"
       update_period: 240
+      file_size_limit: 30000000
       icap_scan_details:
         scan_endpoint: "resp"
-   
+
     # HTTP host
     - ip: "<ip>"
       port: 8000
@@ -67,7 +70,7 @@ av_config:
         base64_encode: True
         json_key_for_post: "object"
         virus_name_header: "detectionName"
-  
+
   - product: "McAfee"
     heuristic_analysis_keys:
     - "HEUR/"
