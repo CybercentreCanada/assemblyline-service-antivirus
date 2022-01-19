@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Thread
 from time import sleep, time
 from math import floor
+from os.path import getsize
 from requests import Session
 from base64 import b64encode
 from re import search
@@ -27,13 +28,17 @@ VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_WAIT_TIME_BETWEEN_RETRIES = 60  # in seconds
 VERSION_REGEX = r"(?<=\().*?(?=\))"  # Grabs a substring found between parentheses
 CHARS_TO_STRIP = [";", ":", "="]
+MIN_SCAN_TIMEOUT_IN_SECONDS = 30
+MIN_POST_SCAN_TIME_IN_SECONDS = 10
+MAX_FILE_SIZE_IN_MEGABYTES = 100
+ERROR_RESULT = "ERROR"
 
 
 class AntiVirusHost:
     """
     This class represents the antivirus product host and how it should be interacted with
     """
-    def __init__(self, group: str, ip: str, port: int, method: str, update_period: int,
+    def __init__(self, group: str, ip: str, port: int, method: str, update_period: int, file_size_limit: int = 0,
                  heuristic_analysis_keys: List[str] = None, icap_scan_details: Dict[str, Any] = None,
                  http_scan_details: Dict[str, Any] = None) -> None:
         """
@@ -43,6 +48,7 @@ class AntiVirusHost:
         @param port: The port at which the antivirus product is listening on
         @param method: The method with which this class should interact with the antivirus product (value must be one of "icap" or "http")
         @param update_period: The number of minutes between when the product polls for updates
+        @param file_size_limit: The maximum file size that an AV should accept
         @param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
         indicate that heuristic analysis caused the signature to be raised
         @param icap_scan_details: The details regarding scanning and parsing a file via ICAP
@@ -60,6 +66,7 @@ class AntiVirusHost:
         self.port = port
         self.method = method
         self.update_period = update_period
+        self.file_size_limit = file_size_limit
         self.heuristic_analysis_keys = heuristic_analysis_keys
 
         if method == ICAP_METHOD:
@@ -76,7 +83,8 @@ class AntiVirusHost:
         self.client = IcapClient(
             host=self.ip,
             port=self.port,
-            respmod_service=self.icap_scan_details.scan_endpoint
+            respmod_service=self.icap_scan_details.scan_endpoint,
+            timeout=MIN_SCAN_TIMEOUT_IN_SECONDS
         ) \
             if self.method == ICAP_METHOD else Session()
         self.sleeping = False
@@ -91,7 +99,8 @@ class AntiVirusHost:
             return NotImplemented
         return self.group == other.group and self.ip == other.ip and \
                self.port == other.port and self.method == other.method and \
-               self.update_period == other.update_period and self.icap_scan_details == other.icap_scan_details and \
+               self.update_period == other.update_period and self.file_size_limit == other.file_size_limit and \
+               self.icap_scan_details == other.icap_scan_details and \
                self.http_scan_details == other.http_scan_details and \
                type(self.client) == type(other.client) and self.sleeping == other.sleeping and \
                self.heuristic_analysis_keys == other.heuristic_analysis_keys
@@ -247,6 +256,7 @@ class AvHitSection(ResultSection):
 # Then we can put type hinting in the execute() method
 # Global variables
 av_hit_result_sections: List[AvHitSection] = []
+av_errors: List[str] = []
 
 
 class AntiVirus(ServiceBase):
@@ -279,24 +289,34 @@ class AntiVirus(ServiceBase):
         if len(self.hosts) < 1:
             raise ValueError(f"There does not appear to be any hosts loaded in the 'products' config "
                              f"variable in the service configurations.")
+        if self.service_attributes.timeout < MIN_SCAN_TIMEOUT_IN_SECONDS + MIN_POST_SCAN_TIME_IN_SECONDS:
+            raise ValueError(f"The service timeout must be greater than or equal to "
+                             f"{MIN_SCAN_TIMEOUT_IN_SECONDS + MIN_POST_SCAN_TIME_IN_SECONDS} seconds!")
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
         global av_hit_result_sections
+        global av_errors
         # Reset globals for each request
         av_hit_result_sections = []
+        av_errors = []
 
         request.result = Result()
         max_workers = len(self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the service context.")
         AntiVirus._determine_service_context(request, self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
-        selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts)
+        file_size = getsize(request.file_path)
+        selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts, file_size)
         if not selected_hosts:
             message = "All hosts are unavailable!"
             self.log.warning(f"[{request.sid}/{request.sha256}] {message}")
             raise RecoverableError(message)
 
+        scan_timeout = AntiVirus._determine_scan_timeout_by_size(self.service_attributes.timeout, file_size)
+        for host in selected_hosts:
+            if host.method == ICAP_METHOD:
+                host.client.timeout = scan_timeout
         self.log.debug(f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool")
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -304,14 +324,15 @@ class AntiVirus(ServiceBase):
                     executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
                     for host in selected_hosts
                 }
-                self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool")
-                # We need at least 30 seconds for result processing
-                acceptable_timeout = self.service_attributes.timeout - 30
-                sets = wait(futures, timeout=acceptable_timeout)
-                self.log.debug(f"[{request.sid}/{request.sha256}] Stopped waiting for the thread pool to complete")
+                self.log.debug(f"[{request.sid}/{request.sha256}] {len(selected_hosts)} tasks have been submitted to the thread pool with a scan timeout of {scan_timeout}s.")
+                sets = wait(futures, timeout=scan_timeout)
                 for future in sets.not_done:
                     host = futures[future]
-                    self.log.warning(f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was unable to complete in {acceptable_timeout}s.")
+                    self.log.warning(f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was unable to complete in {scan_timeout}s.")
+                    if host.method == ICAP_METHOD:
+                        if host.group not in av_errors:
+                            av_errors.append(host.group)
+                        host.client.close()
         except Exception as e:
             message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
             self.log.error(message)
@@ -323,7 +344,7 @@ class AntiVirus(ServiceBase):
                 av_hit_result_sections.remove(result_section)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, request.result)
+        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     @staticmethod
@@ -345,7 +366,15 @@ class AntiVirus(ServiceBase):
 
         return [
             AntiVirusHost(
-                product["product"], host["ip"], host["port"], host["method"], host["update_period"], product.get("heuristic_analysis_keys"), host.get("icap_scan_details"), host.get("http_scan_details")
+                group=product["product"],
+                ip=host["ip"],
+                port=host["port"],
+                method=host["method"],
+                update_period=host["update_period"],
+                file_size_limit=host.get("file_size_limit", 0),
+                heuristic_analysis_keys=product.get("heuristic_analysis_keys"),
+                icap_scan_details=host.get("icap_scan_details"),
+                http_scan_details=host.get("http_scan_details")
             )
             for product in products for host in product["hosts"]
         ]
@@ -358,16 +387,25 @@ class AntiVirus(ServiceBase):
         @param file_contents: The contents of the file to scan
         @return: None
         """
-        global av_version_result_sections
         global av_hit_result_sections
+        global av_errors
 
         # Step 1: Scan file
+        start_scan_time = time()
         result, version, host = self._scan_file(host, file_hash, file_contents)
-
+        elapsed_scan_time = time() - start_scan_time
         # Step 2: Parse results
+        start_parse_time = time()
         av_version = self._parse_version(version, host.method) if version is not None else None
-        av_hits = self._parse_result(result, host, av_version, self.sig_score_revision_map, self.kw_score_revision_map,
-                                     self.safelist_match) if result is not None else []
+        if result == ERROR_RESULT:
+            av_errors.append(host.group)
+        elif result is not None:
+            av_hits = self._parse_result(result, host, av_version, self.sig_score_revision_map, self.kw_score_revision_map,
+                                         self.safelist_match)
+        else:
+            av_hits = []
+        elapsed_parse_time = time() - start_parse_time
+        self.log.debug(f"{host.group} {host.ip}:{host.port} Time elapsed for scanning: {elapsed_scan_time}s; Time elapsed for parsing: {elapsed_parse_time}s")
 
         # Step 3: Add parsed results to result section lists
         for av_hit in av_hits:
@@ -423,6 +461,7 @@ class AntiVirus(ServiceBase):
         except Exception as e:
             self.log.warning(f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. Going to sleep for {self.retry_period}s.")
             Thread(target=host.sleep, args=[self.retry_period]).start()
+            results = ERROR_RESULT
         return results, version, host
 
     @staticmethod
@@ -498,19 +537,31 @@ class AntiVirus(ServiceBase):
                 virus_name = line[len(virus_name_header) + 1:].strip()
                 break
 
-        if not virus_name:
+        if not virus_name or all(char in CHARS_TO_STRIP for char in virus_name):
             return av_hits
 
+        virus_names: Set[str] = set()
+        if "," in virus_name:
+            virus_names = {vname.strip() for vname in virus_name.split(",")}
+        elif " " in virus_name:
+            virus_names = {vname.strip() for vname in virus_name.split(" ")}
+        else:
+            virus_names = {virus_name}
+        for virus_name in virus_names:
+            av_hits.append(AntiVirus._handle_virus_hit_section(av_name, av_version, virus_name, heuristic_analysis_keys, sig_score_revision_map, kw_score_revision_map, safelist_match))
+        return av_hits
+
+    @staticmethod
+    def _handle_virus_hit_section(av_name, av_version, virus_name, heuristic_analysis_keys, sig_score_revision_map, kw_score_revision_map, safelist_match):
         heur_analysis = False
         if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
             heur_analysis = True
             for heuristic_analysis_key in heuristic_analysis_keys:
                 virus_name = virus_name.replace(heuristic_analysis_key, "")
         if heur_analysis:
-            av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 2, sig_score_revision_map, kw_score_revision_map, safelist_match))
+            return AvHitSection(av_name, av_version, virus_name, {}, 2, sig_score_revision_map, kw_score_revision_map, safelist_match)
         else:
-            av_hits.append(AvHitSection(av_name, av_version, virus_name, {}, 1, sig_score_revision_map, kw_score_revision_map, safelist_match))
-        return av_hits
+            return AvHitSection(av_name, av_version, virus_name, {}, 1, sig_score_revision_map, kw_score_revision_map, safelist_match)
 
     @staticmethod
     def _parse_http_results(http_results: str, av_name: str, virus_name_header: str,
@@ -562,26 +613,32 @@ class AntiVirus(ServiceBase):
         return av_hits
 
     @staticmethod
-    def _gather_results(hosts: List[AntiVirusHost], hit_result_sections: List[AvHitSection], result: Result) -> None:
+    def _gather_results(hosts: List[AntiVirusHost], hit_result_sections: List[AvHitSection], av_errors: List[str], result: Result) -> None:
         """
         This method puts the ResultSections and AvHitSections together into the Result object
         @param hosts: A list of AntiVirusHost class instances
         @param hit_result_sections: A list of AvHitSections detailing the results from the antivirus product
+        @param av_errors: A list of host groups that errored during the scan
         @param result: The Result object that the ResultSections will go into
         @return: None
         """
         # If no AV hit ResultSections, do nothing
-        if len(hit_result_sections) < 1:
+        if len(hit_result_sections) < 1 and not av_errors:
             return
 
         for result_section in hit_result_sections:
             result.add_section(result_section)
         if len(hit_result_sections) < len(hosts):
             host_groups = [host.group for host in hosts]
-            no_result_hosts = [host_group for host_group in host_groups if not any(host_group in result_section.body for result_section in hit_result_sections)]
+            no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(host_group in result_section.body for result_section in hit_result_sections)]
+            body = dict()
+            if no_result_hosts:
+                body["no_threat_detected"] = [host for host in no_result_hosts]
+            if av_errors:
+                body["errors_during_scanning"] = [host for host in av_errors]
             no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
                                           body_format=BODY_FORMAT.KEY_VALUE,
-                                          body=json.dumps(dict(no_threat_detected=[host for host in no_result_hosts])))
+                                          body=json.dumps(body))
             result.add_section(no_threat_sec)
 
     @staticmethod
@@ -603,10 +660,11 @@ class AntiVirus(ServiceBase):
         request.set_service_context(f"Engine Update Range: {epoch_to_local(lower_range)} - {epoch_to_local(upper_range)}")
 
     @staticmethod
-    def _determine_hosts_to_use(hosts: List[AntiVirusHost]) -> List[AntiVirusHost]:
+    def _determine_hosts_to_use(hosts: List[AntiVirusHost], file_size: int) -> List[AntiVirusHost]:
         """
         This method takes a list of hosts, and determines which hosts are going to have files sent to them
         @param hosts: the list of antivirus hosts registered in the service
+        @param file_size: the size of the file in bytes
         @return: a list of antivirus hosts that will have files sent to them
         """
         selected_hosts: List[AntiVirusHost] = []
@@ -615,8 +673,31 @@ class AntiVirus(ServiceBase):
         # First eliminate sleeping hosts
         hosts_that_are_awake = [host for host in hosts if not host.sleeping]
 
+        # Second, only choose hosts that can handle the file size
+        hosts_that_are_awake_and_can_handle_file_size = [host for host in hosts_that_are_awake if not host.file_size_limit or host.file_size_limit >= file_size]
+
         # Next choose a random host from the group in order to evenly distribute traffic
-        groups = groups.union({host.group for host in hosts_that_are_awake})
+        groups = groups.union({host.group for host in hosts_that_are_awake_and_can_handle_file_size})
         for group in groups:
-            selected_hosts.append(choice([host for host in hosts_that_are_awake if host.group == group]))
+            selected_hosts.append(choice([host for host in hosts_that_are_awake_and_can_handle_file_size if host.group == group]))
         return selected_hosts
+
+    @staticmethod
+    def _determine_scan_timeout_by_size(max_service_timeout: int, file_size: int) -> int:
+        """
+        This method determines the appropriate time to wait to scan a file based on its size
+        @param max_service_timeout: the maximum time that we have to scan a file
+        @param file_size: the size of the file in bytes
+        @return: the timeout in seconds
+        """
+        additional_timeout = 0
+        # For a file greater than 5MB, let's add another 60 seconds to the timeout
+        if file_size > 5 * 1000 * 1000:
+            additional_timeout = 60
+        proportionality_constant = (max_service_timeout + MIN_SCAN_TIMEOUT_IN_SECONDS) / MAX_FILE_SIZE_IN_MEGABYTES
+        suggested_scan_timeout = round((file_size / 1000000) * proportionality_constant + additional_timeout + MIN_POST_SCAN_TIME_IN_SECONDS)
+        if suggested_scan_timeout < MIN_SCAN_TIMEOUT_IN_SECONDS:
+            suggested_scan_timeout = MIN_SCAN_TIMEOUT_IN_SECONDS
+        elif suggested_scan_timeout > max_service_timeout:
+            suggested_scan_timeout = max_service_timeout - MIN_POST_SCAN_TIME_IN_SECONDS
+        return suggested_scan_timeout
