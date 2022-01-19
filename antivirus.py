@@ -32,6 +32,8 @@ MIN_SCAN_TIMEOUT_IN_SECONDS = 30
 MIN_POST_SCAN_TIME_IN_SECONDS = 10
 MAX_FILE_SIZE_IN_MEGABYTES = 100
 ERROR_RESULT = "ERROR"
+# If the AV product blocks the file but doesn't provide a Virus ID
+NO_AV_PROVIDED = "Unknown"
 
 
 class AntiVirusHost:
@@ -537,8 +539,11 @@ class AntiVirus(ServiceBase):
                 virus_name = line[len(virus_name_header) + 1:].strip()
                 break
 
-        if not virus_name or all(char in CHARS_TO_STRIP for char in virus_name):
+        if not virus_name:
             return av_hits
+
+        if all(char in CHARS_TO_STRIP for char in virus_name):
+            virus_name = NO_AV_PROVIDED
 
         virus_names: Set[str] = set()
         if "," in virus_name:
