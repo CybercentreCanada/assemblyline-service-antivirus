@@ -91,24 +91,24 @@ av_config:
         scan_endpoint: "filescanner"
       update_period: 240
 
-    - product: "ESET"
-      hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        icap_scan_details:
-          no_version: true
-          virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
-        update_period: 240
+  - product: "ESET"
+    hosts:
+    - ip: "<ip>"
+      port: 1344
+      method: "icap"
+      icap_scan_details:
+        no_version: true
+        virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
+      update_period: 240
 
-    - product: "Bitdefender"
-      heuristic_analysis_keys:
-      - "Gen:Heur"
-      hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        update_period: 240
+  - product: "Bitdefender"
+    heuristic_analysis_keys:
+    - "Gen:Heur"
+    hosts:
+    - ip: "<ip>"
+      port: 1344
+      method: "icap"
+      update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:

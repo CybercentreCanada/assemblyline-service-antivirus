@@ -208,9 +208,9 @@ class AvHitSection(ResultSection):
     This class represents an Assemblyline Service ResultSection specifically for antivirus products
     """
 
-    def __init__(self, av_name: str, av_version: Optional[str], virus_name: str, engine: Dict[str, str],
-                 heur_id: int, sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
-                 safelist_match: List[str]) -> None:
+    def __init__(self, av_name: str, av_version: Optional[str], virus_name: str,
+                 engine: Dict[str, str], heur_id: int, sig_score_revision_map: Dict[str, int],
+                 kw_score_revision_map: Dict[str, int], safelist_match: List[str], scan_time: float = None) -> None:
         """
         This method initializes the AvResultSection class and performs a couple validity checks
         @param av_name: The name of the antivirus product
@@ -222,6 +222,7 @@ class AvHitSection(ResultSection):
         @param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
         to all signatures containing any of these keywords
         @param safelist_match: A list of antivirus vendor virus names that are determined to be safe
+        @param scan_time: The time it took to scan the file
         @return: None
         """
         for char_to_strip in CHARS_TO_STRIP:
@@ -233,6 +234,9 @@ class AvHitSection(ResultSection):
             virus_name=virus_name,
             scan_result="infected" if heur_id == 1 else "suspicious",
         )
+        if scan_time:
+            json_body["scan_time"] = f"{round(scan_time)} seconds"
+
         if engine:
             json_body["engine_version"] = engine['version']
             json_body["engine_definition_time"] = engine['def_time']
@@ -271,7 +275,7 @@ class AvHitSection(ResultSection):
 # TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
 # Then we can put type hinting in the execute() method
 # Global variables
-av_hit_result_sections: List[AvHitSection] = []
+av_result_sections: List[AvHitSection] = []
 av_errors: List[str] = []
 
 
@@ -311,10 +315,10 @@ class AntiVirus(ServiceBase):
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
-        global av_hit_result_sections
+        global av_result_sections
         global av_errors
         # Reset globals for each request
-        av_hit_result_sections = []
+        av_result_sections = []
         av_errors = []
 
         request.result = Result()
@@ -360,14 +364,14 @@ class AntiVirus(ServiceBase):
             raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
-        for result_section in av_hit_result_sections[:]:
-            if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
-                av_hit_result_sections.remove(result_section)
+        for result_section in av_result_sections[:]:
+            if result_section.tags.get("av.virus_name") and all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
+                av_result_sections.remove(result_section)
 
         self.log.debug(
-            f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit "
+            f"[{request.sid}/{request.sha256}] Adding the {len(av_result_sections)} AV hit "
             "result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
+        AntiVirus._gather_results(selected_hosts, av_result_sections, av_errors, request.result)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     @staticmethod
@@ -410,9 +414,10 @@ class AntiVirus(ServiceBase):
         @param file_contents: The contents of the file to scan
         @return: None
         """
-        global av_hit_result_sections
+        global av_result_sections
         global av_errors
 
+        av_sections: List[ResultSection] = []
         # Step 1: Scan file
         start_scan_time = time()
         result, version, host = self._scan_file(host, file_hash, file_contents)
@@ -422,19 +427,18 @@ class AntiVirus(ServiceBase):
         av_version = self._parse_version(version, host.method) if version is not None else None
         if result == ERROR_RESULT:
             av_errors.append(host.group)
-        elif result is not None:
-            av_hits = self._parse_result(result, host, av_version, self.sig_score_revision_map,
-                                         self.kw_score_revision_map, self.safelist_match)
         else:
-            av_hits = []
+            av_sections = self._parse_result(result, host, av_version, elapsed_scan_time, self.sig_score_revision_map,
+                                             self.kw_score_revision_map, self.safelist_match)
+
         elapsed_parse_time = time() - start_parse_time
         self.log.debug(
             f"{host.group} {host.ip}:{host.port} Time elapsed for scanning: {elapsed_scan_time}s; "
             f"Time elapsed for parsing: {elapsed_parse_time}s")
 
         # Step 3: Add parsed results to result section lists
-        for av_hit in av_hits:
-            av_hit_result_sections.append(av_hit)
+        for av_section in av_sections:
+            av_result_sections.append(av_section)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
                    file_contents: bytes) -> Union[Optional[str], Optional[str], AntiVirusHost]:
@@ -494,13 +498,15 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _parse_result(av_results: str, host: AntiVirusHost, av_version: Optional[str],
-                      sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
+                      scan_time: float, sig_score_revision_map: Dict[str, int],
+                      kw_score_revision_map: Dict[str, int],
                       safelist_match: List[str]) -> List[AvHitSection]:
         """
         This method sends the results to the appropriate parser based on the method
         @param av_results: The results of scanning the file
         @param host: The class instance representing an antivirus product
         @param av_version: A string detailing the version of the antivirus product, if applicable
+        @param scan_time: The time it took to scan the file
         @param sig_score_revision_map: A dictionary containing non-safelisted signature names that have a revised score
         @param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
         to all signatures containing any of these keywords
@@ -509,8 +515,8 @@ class AntiVirus(ServiceBase):
         """
         if host.method == ICAP_METHOD:
             return AntiVirus._parse_icap_results(av_results, host.group, host.icap_scan_details.virus_name_header,
-                                                 host.heuristic_analysis_keys, av_version, sig_score_revision_map,
-                                                 kw_score_revision_map, safelist_match)
+                                                 host.heuristic_analysis_keys, av_version, scan_time,
+                                                 sig_score_revision_map, kw_score_revision_map, safelist_match)
         elif host.method == HTTP_METHOD:
             return AntiVirus._parse_http_results(av_results, host.group, host.http_scan_details.virus_name_header,
                                                  host.heuristic_analysis_keys, av_version, sig_score_revision_map,
@@ -538,7 +544,7 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _parse_icap_results(icap_results: str, av_name: str, virus_name_header: str, heuristic_analysis_keys: List[str],
-                            av_version: Optional[str], sig_score_revision_map: Dict[str, int],
+                            av_version: Optional[str], scan_time: float, sig_score_revision_map: Dict[str, int],
                             kw_score_revision_map: Dict[str, int], safelist_match: List[str]) -> List[AvHitSection]:
         """
         This method parses the results of the ICAP response from scanning the file
@@ -549,6 +555,7 @@ class AntiVirus(ServiceBase):
                                         indicate that heuristic analysis caused the signature to be raised
         @param av_version: A string detailing the version of the antivirus product, if applicable
         @param av_version: A string detailing the version of the antivirus product, if applicable
+        @param scan_time: The time it took to scan the file
         @param sig_score_revision_map: A dictionary containing non-safelisted signature names that have a revised score
         @param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
                                       to all signatures containing any of these keywords
@@ -556,7 +563,11 @@ class AntiVirus(ServiceBase):
         @return: A list of AvHitSections detailing the results of the scan, if applicable
         """
         virus_name: Optional[str] = None
-        av_hits = []
+        av_sections = []
+
+        if icap_results is None:
+            return AntiVirus._create_no_threat_section(av_name, scan_time)
+
         result_lines = icap_results.strip().splitlines()
         if len(result_lines) <= 3 and "204" not in result_lines[0]:
             raise Exception(f'Invalid result from ICAP server: {safe_str(str(icap_results))}')
@@ -567,7 +578,7 @@ class AntiVirus(ServiceBase):
                 break
 
         if not virus_name:
-            return av_hits
+            return AntiVirus._create_no_threat_section(av_name, scan_time)
 
         if all(char in CHARS_TO_STRIP for char in virus_name):
             virus_name = NO_AV_PROVIDED
@@ -580,16 +591,49 @@ class AntiVirus(ServiceBase):
         else:
             virus_names = {virus_name}
         for virus_name in virus_names:
-            av_hits.append(
+            av_sections.append(
                 AntiVirus._handle_virus_hit_section(
-                    av_name, av_version, virus_name, heuristic_analysis_keys, sig_score_revision_map,
+                    av_name, av_version, virus_name, scan_time, heuristic_analysis_keys, sig_score_revision_map,
                     kw_score_revision_map, safelist_match))
-        return av_hits
+        return av_sections
+
+    @staticmethod
+    def _create_no_threat_section(av_name: str, scan_time: float) -> List[ResultSection]:
+        """
+        This method creates a section detailing that no threat was detected
+        @param av_name: The name of the antivirus product
+        @param scan_time: The time it took to scan the file
+        @return: A list containing the result section
+        """
+        return [
+                ResultSection(
+                    f"No Threat Detected by {av_name}",
+                    body_format=BODY_FORMAT.KEY_VALUE,
+                    body=json.dumps(
+                        {"av_name": av_name, "scan_result": "clean", "scan_time": f"{round(scan_time)} seconds"}
+                    )
+                )
+            ]
 
     @staticmethod
     def _handle_virus_hit_section(
-            av_name, av_version, virus_name, heuristic_analysis_keys, sig_score_revision_map, kw_score_revision_map,
-            safelist_match):
+            av_name: str, av_version: str, virus_name: str, scan_time: float, heuristic_analysis_keys: List[str],
+            sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
+            safelist_match: List[str]) -> None:
+        """
+        This method handles the creation of AvHitSections
+        @param av_name: The name of the antivirus product
+        @param av_version: A string detailing the version of the antivirus product, if applicable
+        @param virus_name: The name of the virus, determined by the antivirus product
+        @param scan_time: The time it took to scan the file
+        @param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
+                                        indicate that heuristic analysis caused the signature to be raised
+        @param sig_score_revision_map: A dictionary containing non-safelisted signature names that have a revised score
+        @param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
+        to all signatures containing any of these keywords
+        @param safelist_match: A list of antivirus vendor virus names that are determined to be safe
+        @return: None
+        """
         heur_analysis = False
         if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
             heur_analysis = True
@@ -598,11 +642,11 @@ class AntiVirus(ServiceBase):
         if heur_analysis:
             return AvHitSection(
                 av_name, av_version, virus_name, {},
-                2, sig_score_revision_map, kw_score_revision_map, safelist_match)
+                2, sig_score_revision_map, kw_score_revision_map, safelist_match, scan_time)
         else:
             return AvHitSection(
                 av_name, av_version, virus_name, {},
-                1, sig_score_revision_map, kw_score_revision_map, safelist_match)
+                1, sig_score_revision_map, kw_score_revision_map, safelist_match, scan_time)
 
     @staticmethod
     def _parse_http_results(http_results: str, av_name: str, virus_name_header: str,
@@ -673,8 +717,11 @@ class AntiVirus(ServiceBase):
         if len(hit_result_sections) < 1 and not av_errors:
             return
 
-        for result_section in hit_result_sections:
-            result.add_section(result_section)
+        # First add sections that have heuristics
+        [result.add_section(result_section) for result_section in hit_result_sections if result_section.heuristic]
+        if len(result.sections) > 0:
+            # Only add no threat detected sections if we have a hit
+            [result.add_section(result_section) for result_section in hit_result_sections if not result_section.heuristic]
         if len(hit_result_sections) < len(hosts):
             host_groups = [host.group for host in hosts]
             no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(
