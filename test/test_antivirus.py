@@ -493,19 +493,19 @@ class TestAntiVirus:
 
     @staticmethod
     def test_thr_process_file(antivirus_class_instance, mocker):
-        from antivirus import AntiVirus, AntiVirusHost, av_hit_result_sections
+        from antivirus import AntiVirus, AntiVirusHost, av_result_sections
         avhost = AntiVirusHost("blah", "blah", 1, "icap", 1)
         mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, avhost))
         mocker.patch.object(AntiVirus, "_parse_version", return_value=None)
         mocker.patch.object(AntiVirus, "_parse_result", return_value=[])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert av_hit_result_sections == []
+        assert av_result_sections == []
 
         mocker.patch.object(AntiVirus, "_scan_file", return_value=(True, True, avhost))
         mocker.patch.object(AntiVirus, "_parse_version", return_value="blah")
         mocker.patch.object(AntiVirus, "_parse_result", return_value=["blah"])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert av_hit_result_sections == ["blah"]
+        assert av_result_sections == ["blah"]
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
@@ -561,47 +561,53 @@ class TestAntiVirus:
         mocker.patch.object(AntiVirus, "_parse_http_results", return_value=["blah"])
         avhost_icap = AntiVirusHost("blah", "blah", 1, "icap", 1)
         avhost_http = AntiVirusHost("blah", "blah", 1, "http", 1)
-        assert AntiVirus._parse_result("blah", avhost_icap, "blah", {}, {}, []) == ["blah"]
-        assert AntiVirus._parse_result("blah", avhost_http, "http", {}, {}, []) == ["blah"]
+        scan_time = 10
+        assert AntiVirus._parse_result("blah", avhost_icap, scan_time, "blah", {}, {}, []) == ["blah"]
+        assert AntiVirus._parse_result("blah", avhost_http, scan_time, "http", {}, {}, []) == ["blah"]
         avhost_http.method = "blah"
-        assert AntiVirus._parse_result("blah", avhost_http, "http", {}, {}, []) == []
+        assert AntiVirus._parse_result("blah", avhost_http, scan_time, "http", {}, {}, []) == []
 
     @staticmethod
     @pytest.mark.parametrize(
         "icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
         [
             ("", "", "", "", {}, 0, {}),
-            ("blah\nblah\nblah\nblah", "", "", "", {}, 0, {}),
+            ("blah\nblah\nblah\nblah", "", "", "No Threat Detected by blah", {}, 0, '{"av_name": "blah", "scan_result": '
+                                                   '"clean", "scan_time": "10 seconds"}'),
             ("blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
              {"av.virus_name": ["virus_name"]}, 1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
-                                                   '"infected", "av_version": "blah"}'),
+                                                   '"infected", "scan_time": "10 seconds", "av_version": "blah"}'),
             ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
              {"av.virus_name": ["Unknown"]}, 1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
-                                                   '"infected", "av_version": "blah"}'),
+                                                   '"infected", "scan_time": "10 seconds", "av_version": "blah"}'),
             ("blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur", "blah identified the file as virus_heur",
              {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]}, 2,
-             '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
+             '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "scan_time": "10 seconds", "av_version": "blah"}'),
         ]
     )
     def test_parse_icap_results(icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic,
                                 expected_body, antivirus_class_instance):
         from assemblyline_v4_service.common.result import ResultSection, Heuristic, BODY_FORMAT
         av_name = "blah"
+        scan_time = 10
         if not icap_result:
             with pytest.raises(Exception):
-                antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, [])
+                antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, scan_time, {}, {}, [])
             return
 
         if not expected_section_title:
-            assert antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
+            assert antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, scan_time, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
-            correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
+            if virus_name:
+                correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.tags = expected_tags
             correct_result_section.body = expected_body
             correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_sections = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
+            test_result_sections = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, scan_time, {}, {}, [])
+            print(test_result_sections[0].__dict__)
+            print(correct_result_section.__dict__)
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
