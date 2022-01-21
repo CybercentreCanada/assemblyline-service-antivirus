@@ -205,14 +205,14 @@ class HTTPScanDetails:
 
 class AvHitSection(ResultSection):
     """
-    This class represents an Assemblyline Service ResultSection specifically for antivirus products
+    This class represents an Assemblyline Service ResultSection specifically for antivirus product hits
     """
 
     def __init__(self, av_name: str, av_version: Optional[str], virus_name: str,
                  engine: Dict[str, str], heur_id: int, sig_score_revision_map: Dict[str, int],
                  kw_score_revision_map: Dict[str, int], safelist_match: List[str], scan_time: float = None) -> None:
         """
-        This method initializes the AvResultSection class and performs a couple validity checks
+        This method initializes the AvHitSection class and performs a couple validity checks
         @param av_name: The name of the antivirus product
         @param av_version: A string detailing the version of the antivirus product, if applicable
         @param virus_name: The name of the virus, determined by the antivirus product
@@ -267,36 +267,84 @@ class AvHitSection(ResultSection):
         if heur_id == 2:
             self.add_tag("av.heuristic", virus_name)
 
-        # TODO: Isolate parts of X-Virus-ID/virus_name according
-        # https://encyclopedia.kaspersky.com/knowledge/rules-for-naming/
-        # So that we can tag more items of interest
+
+class AvCleanSection(ResultSection):
+    """
+    This class represents an Assemblyline Service ResultSection specifically for antivirus product clean scans
+    """
+    def __init__(self, av_name: str, av_version: Optional[str], scan_time: float = None) -> None:
+        """
+        This method initializes the AvCleanSection class
+        @param av_name: The name of the antivirus product
+        @param av_version: A string detailing the version of the antivirus product, if applicable
+        @param scan_time: The time it took to scan the file
+        @return: None
+        """
+        super(AvCleanSection, self).__init__(
+            title_text=f"No Threat Detected by {av_name}",
+            body_format=BODY_FORMAT.KEY_VALUE,
+            body=json.dumps(
+                {
+                    "av_name": av_name,
+                    "av_version": av_version,
+                    "scan_result": "clean",
+                    "scan_time": f"{round(scan_time)} seconds" if round(scan_time) > 0 else "< 1 second"
+                }
+            ),
+        )
+
+
+class AvErrorSection(ResultSection):
+    """
+    This class represents an Assemblyline Service ResultSection specifically for antivirus product scans that
+    resulted in an error
+    """
+    def __init__(self, av_name: str, av_version: Optional[str], error: str) -> None:
+        """
+        This method initializes the AvErrorSection class and performs a couple validity checks
+        @param av_name: The name of the antivirus product
+        @param av_version: A string detailing the version of the antivirus product, if applicable
+        @param error: The reason why the scan failed
+        @return: None
+        """
+        super(AvErrorSection, self).__init__(
+            title_text=f"Error Occurred During Scanning by {av_name}",
+            body_format=BODY_FORMAT.KEY_VALUE,
+            body=json.dumps(
+                {
+                    "av_name": av_name,
+                    "av_version": av_version,
+                    "scan_result": "error",
+                    "error": error
+                }
+            ),
+        )
 
 
 # TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
 # Then we can put type hinting in the execute() method
 # Global variables
-av_result_sections: List[AvHitSection] = []
-av_errors: List[str] = []
+av_hit_result_sections: List[AvHitSection] = []
+av_clean_result_sections: List[AvCleanSection] = []
+av_error_result_sections: List[AvErrorSection] = []
 
 
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
-        self.log.debug("Initializing the AntiVirus service...")
         self.hosts: List[AntiVirusHost] = []
         self.retry_period: int = 0
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
 
-        try:
-            safelist = self.get_api_interface().get_safelist(["av.virus_name"])
-            [self.safelist_match.extend(match_list) for _, match_list in safelist.get('match', {}).items()]
-        except ServiceAPIError as e:
-            self.log.warning(f"Couldn't retrieve safelist from service: {e}. Continuing without it..")
+        # try:
+        #     safelist = self.get_api_interface().get_safelist(["av.virus_name"])
+        #     [self.safelist_match.extend(match_list) for _, match_list in safelist.get('match', {}).items()]
+        # except ServiceAPIError as e:
+        #     self.log.warning(f"Couldn't retrieve safelist from service: {e}. Continuing without it..")
 
     def start(self) -> None:
-        self.log.debug("Starting the AntiVirus service...")
         products = self.config["av_config"].get("products", [])
         self.kw_score_revision_map = self.config["av_config"].get("kw_score_revision_map", {})
         self.sig_score_revision_map = self.config["av_config"].get("sig_score_revision_map", {})
@@ -304,7 +352,6 @@ class AntiVirus(ServiceBase):
         if len(products) < 1:
             raise ValueError("There does not appear to be any products loaded in the 'products' config "
                              "variable in the service configurations.")
-        self.log.debug("Creating the host objects based on the provided product configurations")
         self.hosts = self._get_hosts(products)
         if len(self.hosts) < 1:
             raise ValueError("There does not appear to be any hosts loaded in the 'products' config "
@@ -315,18 +362,20 @@ class AntiVirus(ServiceBase):
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
-        global av_result_sections
-        global av_errors
+        global av_hit_result_sections
+        global av_clean_result_sections
+        global av_error_result_sections
+
         # Reset globals for each request
-        av_result_sections = []
-        av_errors = []
+        av_hit_result_sections = []
+        av_clean_result_sectionss = []
+        av_error_result_sections = []
 
         request.result = Result()
         max_workers = len(self.hosts)
-        self.log.debug(f"[{request.sid}/{request.sha256}] Determining the service context.")
         AntiVirus._determine_service_context(request, self.hosts)
-        self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
         file_size = getsize(request.file_path)
+        sleeping_hosts = [host for host in self.hosts if host.sleeping]
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts, file_size)
         if not selected_hosts:
             message = "All hosts are unavailable!"
@@ -337,8 +386,6 @@ class AntiVirus(ServiceBase):
         for host in selected_hosts:
             if host.method == ICAP_METHOD:
                 host.client.timeout = scan_timeout
-        self.log.debug(
-            f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool")
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
@@ -355,24 +402,31 @@ class AntiVirus(ServiceBase):
                         f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was "
                         f"unable to complete in {scan_timeout}s.")
                     if host.method == ICAP_METHOD:
-                        if host.group not in av_errors:
-                            av_errors.append(host.group)
+                        if all(host.group not in av_error_result_section.title_text for av_error_result_section in av_error_result_sections):
+                            av_error_result_sections.append(
+                                AvErrorSection(
+                                    av_name=host.group,
+                                    av_version=None,
+                                    error=f"Did not complete within scan timeout of {scan_timeout}s"
+                                )
+                            )
                         host.client.close()
         except Exception as e:
             message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
             self.log.error(message)
             raise
 
-        self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
-        for result_section in av_result_sections[:]:
+        for result_section in av_hit_result_sections[:]:
             if result_section.tags.get("av.virus_name") and all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
-                av_result_sections.remove(result_section)
+                av_hit_result_sections.remove(result_section)
 
-        self.log.debug(
-            f"[{request.sid}/{request.sha256}] Adding the {len(av_result_sections)} AV hit "
-            "result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_result_sections, av_errors, request.result)
-        self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
+
+        if sleeping_hosts:
+            av_error_result_sections.append(
+                ResultSection(f"Sleeping AntiVirus products: {'|'.join(sleeping_host.group for sleeping_host in sleeping_hosts if sleeping_host.group not in {awake_host.group for awake_host in self.hosts if awake_host.sleeping})}")
+            )
+
+        AntiVirus._gather_results(av_hit_result_sections, av_clean_result_sections, av_error_result_sections, request.result)
 
     @staticmethod
     def _get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
@@ -414,8 +468,9 @@ class AntiVirus(ServiceBase):
         @param file_contents: The contents of the file to scan
         @return: None
         """
-        global av_result_sections
-        global av_errors
+        global av_hit_result_sections
+        global av_clean_result_sections
+        global av_error_result_sections
 
         av_sections: List[ResultSection] = []
         # Step 1: Scan file
@@ -425,8 +480,14 @@ class AntiVirus(ServiceBase):
         # Step 2: Parse results
         start_parse_time = time()
         av_version = self._parse_version(version, host.method) if version is not None else None
-        if result == ERROR_RESULT:
-            av_errors.append(host.group)
+        if result.startswith(ERROR_RESULT):
+            av_error_result_sections.append(
+                AvErrorSection(
+                    av_name=host.group,
+                    av_version=av_version,
+                    error=result.replace(f"{ERROR_RESULT}:", "")
+                )
+            )
         else:
             av_sections = self._parse_result(result, host, av_version, elapsed_scan_time, self.sig_score_revision_map,
                                              self.kw_score_revision_map, self.safelist_match)
@@ -438,7 +499,10 @@ class AntiVirus(ServiceBase):
 
         # Step 3: Add parsed results to result section lists
         for av_section in av_sections:
-            av_result_sections.append(av_section)
+            if "No Threat Detected" in av_section.title_text:
+                av_clean_result_sections.append(av_section)
+            else:
+                av_hit_result_sections.append(av_section)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
                    file_contents: bytes) -> Union[Optional[str], Optional[str], AntiVirusHost]:
@@ -493,7 +557,7 @@ class AntiVirus(ServiceBase):
                 f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. "
                 f"Going to sleep for {self.retry_period}s.")
             Thread(target=host.sleep, args=[self.retry_period]).start()
-            results = ERROR_RESULT
+            results = f"{ERROR_RESULT}:{safe_str(e)}"
         return results, version, host
 
     @staticmethod
@@ -563,10 +627,10 @@ class AntiVirus(ServiceBase):
         @return: A list of AvHitSections detailing the results of the scan, if applicable
         """
         virus_name: Optional[str] = None
-        av_sections = []
+        av_sections: List[AvHitSection] = []
 
         if icap_results is None:
-            return AntiVirus._create_no_threat_section(av_name, scan_time)
+            return [AvCleanSection(av_name, av_version, scan_time)]
 
         result_lines = icap_results.strip().splitlines()
         if len(result_lines) <= 3 and "204" not in result_lines[0]:
@@ -578,7 +642,7 @@ class AntiVirus(ServiceBase):
                 break
 
         if not virus_name:
-            return AntiVirus._create_no_threat_section(av_name, scan_time)
+            return [AvCleanSection(av_name, av_version, scan_time)]
 
         if all(char in CHARS_TO_STRIP for char in virus_name):
             virus_name = NO_AV_PROVIDED
@@ -596,24 +660,6 @@ class AntiVirus(ServiceBase):
                     av_name, av_version, virus_name, scan_time, heuristic_analysis_keys, sig_score_revision_map,
                     kw_score_revision_map, safelist_match))
         return av_sections
-
-    @staticmethod
-    def _create_no_threat_section(av_name: str, scan_time: float) -> List[ResultSection]:
-        """
-        This method creates a section detailing that no threat was detected
-        @param av_name: The name of the antivirus product
-        @param scan_time: The time it took to scan the file
-        @return: A list containing the result section
-        """
-        return [
-                ResultSection(
-                    f"No Threat Detected by {av_name}",
-                    body_format=BODY_FORMAT.KEY_VALUE,
-                    body=json.dumps(
-                        {"av_name": av_name, "scan_result": "clean", "scan_time": f"{round(scan_time)} seconds"}
-                    )
-                )
-            ]
 
     @staticmethod
     def _handle_virus_hit_section(
@@ -701,40 +747,36 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _gather_results(
-            hosts: List[AntiVirusHost],
-            hit_result_sections: List[AvHitSection],
-            av_errors: List[str],
+            av_hit_result_sections: List[AvHitSection],
+            av_clean_result_sections: List[AvCleanSection],
+            av_error_result_sections: List[str],
             result: Result) -> None:
         """
         This method puts the ResultSections and AvHitSections together into the Result object
-        @param hosts: A list of AntiVirusHost class instances
-        @param hit_result_sections: A list of AvHitSections detailing the results from the antivirus product
-        @param av_errors: A list of host groups that errored during the scan
+        @param av_hit_result_sections: A list of AvHitSections detailing the results from the antivirus product
+        @param av_clean_result_sections: A list of AvCleanSections detailing the results from the antivirus product
+        @param av_error_result_sections: A list of host groups that errored during the scan
         @param result: The Result object that the ResultSections will go into
         @return: None
         """
-        # If no AV hit ResultSections, do nothing
-        if len(hit_result_sections) < 1 and not av_errors:
+        # If no AV hit ResultSections and no errors, do nothing
+        if not av_hit_result_sections and not av_error_result_sections:
             return
 
-        # First add sections that have heuristics
-        [result.add_section(result_section) for result_section in hit_result_sections if result_section.heuristic]
-        if len(result.sections) > 0:
-            # Only add no threat detected sections if we have a hit
-            [result.add_section(result_section) for result_section in hit_result_sections if not result_section.heuristic]
-        if len(hit_result_sections) < len(hosts):
-            host_groups = [host.group for host in hosts]
-            no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(
-                host_group in result_section.body for result_section in hit_result_sections)]
-            body = dict()
-            if no_result_hosts:
-                body["no_threat_detected"] = [host for host in no_result_hosts]
-            if av_errors:
-                body["errors_during_scanning"] = [host for host in av_errors]
-            no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
-                                          body_format=BODY_FORMAT.KEY_VALUE,
-                                          body=json.dumps(body))
-            result.add_section(no_threat_sec)
+        if len(av_hit_result_sections) > 0:
+            av_hit_sections = ResultSection("AntiVirus Hits")
+            [av_hit_sections.add_subsection(result_section) for result_section in av_hit_result_sections]
+            result.add_section(av_hit_sections)
+
+        if len(av_error_result_sections) > 0:
+            av_error_sections = ResultSection("AntiVirus Errors")
+            [av_error_sections.add_subsection(result_section) for result_section in av_error_result_sections]
+            result.add_section(av_error_sections)
+
+        if len(av_clean_result_sections) > 0:
+            av_clean_sections = ResultSection("No Threats Detected")
+            [av_clean_sections.add_subsection(result_section) for result_section in av_clean_result_sections]
+            result.add_section(av_clean_sections)
 
     @staticmethod
     def _determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
