@@ -14,7 +14,7 @@ from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.common.str_utils import safe_str
 from assemblyline_v4_service.common.api import ServiceAPIError
-from assemblyline_v4_service.common.base import ServiceBase
+from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
@@ -359,13 +359,15 @@ class AntiVirus(ServiceBase):
                             av_errors.append(host.group)
                         host.client.close()
         except Exception as e:
-            message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
-            self.log.error(message)
+            if not is_recoverable_runtime_error(e):
+                message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
+                self.log.error(message)
             raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_result_sections[:]:
-            if result_section.tags.get("av.virus_name") and all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
+            if result_section.tags.get("av.virus_name") and all(virus_name in self.safelist_match
+                                                                for virus_name in result_section.tags["av.virus_name"]):
                 av_result_sections.remove(result_section)
 
         self.log.debug(
@@ -606,14 +608,14 @@ class AntiVirus(ServiceBase):
         @return: A list containing the result section
         """
         return [
-                ResultSection(
-                    f"No Threat Detected by {av_name}",
-                    body_format=BODY_FORMAT.KEY_VALUE,
-                    body=json.dumps(
-                        {"av_name": av_name, "scan_result": "clean", "scan_time": f"{round(scan_time)} seconds"}
-                    )
+            ResultSection(
+                f"No Threat Detected by {av_name}",
+                body_format=BODY_FORMAT.KEY_VALUE,
+                body=json.dumps(
+                    {"av_name": av_name, "scan_result": "clean", "scan_time": f"{round(scan_time)} seconds"}
                 )
-            ]
+            )
+        ]
 
     @staticmethod
     def _handle_virus_hit_section(
@@ -721,7 +723,8 @@ class AntiVirus(ServiceBase):
         [result.add_section(result_section) for result_section in hit_result_sections if result_section.heuristic]
         if len(result.sections) > 0:
             # Only add no threat detected sections if we have a hit
-            [result.add_section(result_section) for result_section in hit_result_sections if not result_section.heuristic]
+            [result.add_section(result_section)
+             for result_section in hit_result_sections if not result_section.heuristic]
         if len(hit_result_sections) < len(hosts):
             host_groups = [host.group for host in hosts]
             no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(
