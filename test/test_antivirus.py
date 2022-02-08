@@ -40,24 +40,24 @@ def check_section_equality(this, that) -> bool:
     # Heuristics also need their own equality checks
     if this.heuristic and that.heuristic:
         heuristic_equality = this.heuristic.definition.attack_id == that.heuristic.definition.attack_id and \
-                             this.heuristic.definition.classification == that.heuristic.definition.classification and \
-                             this.heuristic.definition.description == that.heuristic.definition.description and \
-                             this.heuristic.definition.filetype == that.heuristic.definition.filetype and \
-                             this.heuristic.definition.heur_id == that.heuristic.definition.heur_id and \
-                             this.heuristic.definition.id == that.heuristic.definition.id and \
-                             this.heuristic.definition.max_score == that.heuristic.definition.max_score and \
-                             this.heuristic.definition.name == that.heuristic.definition.name and \
-                             this.heuristic.definition.score == that.heuristic.definition.score and \
-                             this.heuristic.definition.signature_score_map == \
-                             that.heuristic.definition.signature_score_map
+            this.heuristic.definition.classification == that.heuristic.definition.classification and \
+            this.heuristic.definition.description == that.heuristic.definition.description and \
+            this.heuristic.definition.filetype == that.heuristic.definition.filetype and \
+            this.heuristic.definition.heur_id == that.heuristic.definition.heur_id and \
+            this.heuristic.definition.id == that.heuristic.definition.id and \
+            this.heuristic.definition.max_score == that.heuristic.definition.max_score and \
+            this.heuristic.definition.name == that.heuristic.definition.name and \
+            this.heuristic.definition.score == that.heuristic.definition.score and \
+            this.heuristic.definition.signature_score_map == \
+            that.heuristic.definition.signature_score_map
 
         result_heuristic_equality = heuristic_equality and \
-                                    this.heuristic.attack_ids == that.heuristic.attack_ids and \
-                                    this.heuristic.frequency == that.heuristic.frequency and \
-                                    this.heuristic.heur_id == that.heuristic.heur_id and \
-                                    this.heuristic.score == that.heuristic.score and \
-                                    this.heuristic.score_map == that.heuristic.score_map and \
-                                    this.heuristic.signatures == that.heuristic.signatures
+            this.heuristic.attack_ids == that.heuristic.attack_ids and \
+            this.heuristic.frequency == that.heuristic.frequency and \
+            this.heuristic.heur_id == that.heuristic.heur_id and \
+            this.heuristic.score == that.heuristic.score and \
+            this.heuristic.score_map == that.heuristic.score_map and \
+            this.heuristic.signatures == that.heuristic.signatures
 
     elif not this.heuristic and not that.heuristic:
         result_heuristic_equality = True
@@ -66,13 +66,13 @@ def check_section_equality(this, that) -> bool:
 
     # Assuming we are given the "root section" at all times, it is safe to say that we don't need to confirm parent
     current_section_equality = result_heuristic_equality and \
-                               this.body == that.body and \
-                               this.body_format == that.body_format and \
-                               this.classification == that.classification and \
-                               this.depth == that.depth and \
-                               len(this.subsections) == len(that.subsections) and \
-                               this.title_text == that.title_text and \
-                               this.tags == that.tags
+        this.body == that.body and \
+        this.body_format == that.body_format and \
+        this.classification == that.classification and \
+        this.depth == that.depth and \
+        len(this.subsections) == len(that.subsections) and \
+        this.title_text == that.title_text and \
+        this.tags == that.tags
 
     if not current_section_equality:
         return False
@@ -182,7 +182,8 @@ class TestAntiVirusHost:
         assert type(avhost_icap_with_no_details.client) == IcapClient
         assert avhost_icap_with_no_details.sleeping is False
 
-        avhost_icap_with_details = antivirushost_class("blah", "blah", 8008, "icap", 100, icap_scan_details={"virus_name_header": "blah", "scan_endpoint": "blah", "no_version": True})
+        avhost_icap_with_details = antivirushost_class("blah", "blah", 8008, "icap", 100, icap_scan_details={
+                                                       "virus_name_header": "blah", "scan_endpoint": "blah", "no_version": True})
         assert avhost_icap_with_details.group == "blah"
         assert avhost_icap_with_details.ip == "blah"
         assert avhost_icap_with_details.port == 8008
@@ -217,7 +218,11 @@ class TestAntiVirusHost:
         assert type(avhost_http_with_no_details.client) == Session
         assert avhost_http_with_no_details.sleeping is False
 
-        avhost_http_with_details = antivirushost_class("blah", "blah", 8008, "http", 100, ["blah"], http_scan_details={"post_data_type": "json", "json_key_for_post": "blah", "result_in_headers": True, "via_proxy": True, "virus_name_header": "blah", "version_endpoint": "blah", "scan_endpoint": "blah", "base64_encode": True})
+        avhost_http_with_details = antivirushost_class(
+            "blah", "blah", 8008, "http", 100, ["blah"],
+            http_scan_details={"post_data_type": "json", "json_key_for_post": "blah", "result_in_headers": True,
+                               "via_proxy": True, "virus_name_header": "blah", "version_endpoint": "blah",
+                               "scan_endpoint": "blah", "base64_encode": True})
         assert avhost_http_with_details.group == "blah"
         assert avhost_http_with_details.ip == "blah"
         assert avhost_http_with_details.port == 8008
@@ -330,7 +335,7 @@ class TestAvHitSection:
     @staticmethod
     def test_init():
         from json import dumps
-        from assemblyline_v4_service.common.result import BODY_FORMAT, ResultSection, Heuristic
+        from assemblyline_v4_service.common.result import BODY_FORMAT, ResultSection
         from antivirus import AvHitSection
         av_name = "blah"
         av_version = "blah"
@@ -341,13 +346,16 @@ class TestAvHitSection:
         kw_score_rev_map = {}
         safelist_match = []
         actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
-                                     kw_score_rev_map, safelist_match)
+                                      kw_score_rev_map, safelist_match)
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
-        correct_result_section.heuristic = Heuristic(1)
+        correct_result_section.set_heuristic(1)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
-        correct_result_section.tags = {"av.virus_name": [virus_name]}
-        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "infected", "av_version": av_version})
-        correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
+        correct_result_section.add_tag("av.virus_name", virus_name)
+        correct_result_section.set_body(
+            dumps(
+                {"av_name": av_name, "virus_name": virus_name, "scan_result": "infected",
+                 "av_version": av_version}),
+            BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         temp_virus_name = ";:blah="
@@ -356,34 +364,53 @@ class TestAvHitSection:
         safelist_match = ["blah"]
         actual_res_sec = AvHitSection(av_name, av_version, temp_virus_name, engine, heur_id, sig_score_rev_map,
                                       kw_score_rev_map, safelist_match)
-        correct_result_section.tags = {"av.virus_name": [virus_name], "av.heuristic": [f"{virus_name}"]}
-        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
+        correct_result_section.add_tag("av.virus_name", virus_name)
+        correct_result_section.add_tag("av.heuristic", virus_name)
+        correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 0)
-        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        correct_result_section.set_body(dumps(
+            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
+             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         kw_score_rev_map = {"bla": 1}
         actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
                                       kw_score_rev_map, safelist_match)
-        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
+        correct_result_section.add_tag("av.virus_name", virus_name)
+        correct_result_section.add_tag("av.heuristic", virus_name)
+        correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 1)
-        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        correct_result_section.set_body(dumps(
+            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
+             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         kw_score_rev_map = {"bla": 1, "h": 2}
         actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
                                       kw_score_rev_map, safelist_match)
-        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
+        correct_result_section.add_tag("av.virus_name", virus_name)
+        correct_result_section.add_tag("av.heuristic", virus_name)
+        correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 2)
-        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        correct_result_section.set_body(dumps(
+            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
+             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         sig_score_rev_map = {f"{av_name}.{virus_name}": 10}
         actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
                                       kw_score_rev_map, safelist_match)
-        correct_result_section.heuristic = Heuristic(2)
+        correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
+        correct_result_section.add_tag("av.virus_name", virus_name)
+        correct_result_section.add_tag("av.heuristic", virus_name)
+        correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 10)
-        correct_result_section.body = dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah", "engine_definition_time": 1, "av_version": av_version})
+        correct_result_section.set_body(dumps(
+            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
+             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(actual_res_sec, correct_result_section)
 
 
@@ -416,9 +443,16 @@ class TestAntiVirus:
         products = [{"product": "blah", "hosts": [{"ip": "blah", "port": 1, "method": "icap", "update_period": 1}]}]
         antivirus_class_instance.config["av_config"]["products"] = products
         correct_hosts = [
-            AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], host.get("file_size_limit", 0), product.get("heuristic_analysis_keys"), host.get("icap_scan_details"), host.get("http_scan_details"))
-            for product in products for host in product["hosts"]
-        ]
+            AntiVirusHost(
+                product["product"],
+                host["ip"],
+                host["port"],
+                host["method"],
+                host["update_period"],
+                host.get("file_size_limit", 0),
+                product.get("heuristic_analysis_keys"),
+                host.get("icap_scan_details"),
+                host.get("http_scan_details")) for product in products for host in product["hosts"]]
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
         assert antivirus_class_instance.retry_period == 60
@@ -482,12 +516,21 @@ class TestAntiVirus:
     @staticmethod
     def test_get_hosts():
         from antivirus import AntiVirus, AntiVirusHost
-        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"virus_name_header": "blah", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
-        correct_hosts = [AntiVirusHost(product["product"], host["ip"], host["port"], host["method"], host["update_period"], icap_scan_details=host["icap_scan_details"])
-                         for product in products for host in product["hosts"]]
+        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {
+            "virus_name_header": "blah", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
+        correct_hosts = [
+            AntiVirusHost(
+                product["product"],
+                host["ip"],
+                host["port"],
+                host["method"],
+                host["update_period"],
+                icap_scan_details=host["icap_scan_details"])
+            for product in products for host in product["hosts"]]
         assert AntiVirus._get_hosts(products) == correct_hosts
 
-        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}, {"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
+        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}, {
+            "product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
         with pytest.raises(ValueError):
             AntiVirus._get_hosts(products)
 
@@ -527,14 +570,21 @@ class TestAntiVirus:
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100)
         assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ("blah", None, av_host_http)
 
-        av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100, http_scan_details={"base64_encode": True, "version_endpoint": "blah", "post_data_type": "json", "via_proxy": True, "result_in_headers": True})
-        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ('{"Via": "(blah)"}', "blah", av_host_http)
+        av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100,
+                                           http_scan_details={"base64_encode": True, "version_endpoint": "blah",
+                                                              "post_data_type": "json", "via_proxy": True,
+                                                              "result_in_headers": True})
+        assert antivirus_class_instance._scan_file(
+            av_host_http, "blah", b"blah") == (
+            '{"Via": "(blah)"}', "blah", av_host_http)
 
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
             assert av_host_icap.sleeping is False
             antivirus_class_instance.retry_period = 2
-            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (ERROR_RESULT, "blah", av_host_icap)
+            assert antivirus_class_instance._scan_file(
+                av_host_icap, "blah", b"blah") == (
+                ERROR_RESULT, "blah", av_host_icap)
             assert av_host_icap.sleeping is True
             sleep(3)
             assert av_host_icap.sleeping is False
@@ -569,40 +619,47 @@ class TestAntiVirus:
     @staticmethod
     @pytest.mark.parametrize(
         "icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
-        [
-            ("", "", "", "", {}, 0, {}),
-            ("blah\nblah\nblah\nblah", "", "", "", {}, 0, {}),
-            ("blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
-             {"av.virus_name": ["virus_name"]}, 1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
-                                                   '"infected", "av_version": "blah"}'),
-            ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
-             {"av.virus_name": ["Unknown"]}, 1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
-                                                   '"infected", "av_version": "blah"}'),
-            ("blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur", "blah identified the file as virus_heur",
-             {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]}, 2,
-             '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
-        ]
-    )
-    def test_parse_icap_results(icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic,
-                                expected_body, antivirus_class_instance):
-        from assemblyline_v4_service.common.result import ResultSection, Heuristic, BODY_FORMAT
+        [("", "", "", "", {},
+          0, {}),
+         ("blah\nblah\nblah\nblah", "", "", "", {},
+          0, {}),
+         ("blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
+          {"av.virus_name": ["virus_name"]},
+          1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
+          '"infected", "av_version": "blah"}'),
+         ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+          {"av.virus_name": ["Unknown"]},
+          1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
+          '"infected", "av_version": "blah"}'),
+         ("blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
+          "blah identified the file as virus_heur",
+          {"av.virus_name": ["virus_heur"],
+           "av.heuristic": ["virus_heur"]},
+          2, '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'), ])
+    def test_parse_icap_results(
+            icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body,
+            antivirus_class_instance):
+        from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
         if not icap_result:
             with pytest.raises(Exception):
-                antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, [])
+                antivirus_class_instance._parse_icap_results(
+                    icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, [])
             return
 
         if not expected_section_title:
-            assert antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
+            assert antivirus_class_instance._parse_icap_results(
+                icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
-            correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
-            if virus_name:
+            if expected_heuristic:
+                correct_result_section.set_heuristic(expected_heuristic)
+            if virus_name and correct_result_section.heuristic:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.tags = expected_tags
-            correct_result_section.body = expected_body
-            correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_sections = antivirus_class_instance._parse_icap_results(icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
+            correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
+            test_result_sections = antivirus_class_instance._parse_icap_results(
+                icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
@@ -620,19 +677,24 @@ class TestAntiVirus:
              '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
         ]
     )
-    def test_parse_http_results(http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body, antivirus_class_instance):
-        from assemblyline_v4_service.common.result import ResultSection, Heuristic, BODY_FORMAT
+    def test_parse_http_results(
+            http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body,
+            antivirus_class_instance):
+        from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
         if not expected_section_title:
-            assert antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", [], version, {}, {}, []) == []
+            assert antivirus_class_instance._parse_http_results(
+                http_result, av_name, "detectionName", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
-            correct_result_section.heuristic = Heuristic(expected_heuristic) if expected_heuristic else None
-            correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
+            if expected_heuristic:
+                correct_result_section.set_heuristic(expected_heuristic)
+            if virus_name and correct_result_section.heuristic:
+                correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.tags = expected_tags
-            correct_result_section.body = expected_body
-            correct_result_section.body_format = BODY_FORMAT.KEY_VALUE
-            test_result_section = antivirus_class_instance._parse_http_results(http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
+            correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
+            test_result_section = antivirus_class_instance._parse_http_results(
+                http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
     @staticmethod
@@ -644,20 +706,18 @@ class TestAntiVirus:
         assert dummy_result_class_instance.sections == []
 
         AntiVirus._gather_results(hosts, [], ["blah1", "blah2"], dummy_result_class_instance)
-        no_result_section = ResultSection(
-            "Failed to Scan or No Threat Detected by AV Engine(s)",
-            body_format=BODY_FORMAT.KEY_VALUE,
-            body=json.dumps(dict(errors_during_scanning=[host.group for host in hosts]))
-        )
+        no_result_section = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
+        no_result_section.set_body(
+            json.dumps(dict(errors_during_scanning=[host.group for host in hosts])),
+            BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section)
 
         correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1, {}, {}, [])
         AntiVirus._gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
-        no_result_section2 = ResultSection(
-            "Failed to Scan or No Threat Detected by AV Engine(s)",
-            body_format=BODY_FORMAT.KEY_VALUE,
-            body=json.dumps(dict(no_threat_detected=[host.group for host in hosts[:1]]))
-        )
+        no_result_section2 = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
+        no_result_section2.set_body(
+            json.dumps(dict(no_threat_detected=[host.group for host in hosts[: 1]])),
+            BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(dummy_result_class_instance.sections[1], correct_av_result_section)
         assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
 
@@ -695,7 +755,8 @@ class TestAntiVirus:
         correct_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         additional_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         av_host_with_file_size_limit = AntiVirusHost("blah3", "blah", 1, "icap", 1, file_size_limit=30000000)
-        hosts = [different_group_av_host, sleeping_av_host, correct_av_host, additional_av_host, av_host_with_file_size_limit]
+        hosts = [different_group_av_host, sleeping_av_host, correct_av_host,
+                 additional_av_host, av_host_with_file_size_limit]
         file_size = 50000000
         actual_hosts = AntiVirus._determine_hosts_to_use(hosts, file_size)
         assert different_group_av_host in actual_hosts
