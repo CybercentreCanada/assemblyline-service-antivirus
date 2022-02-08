@@ -17,7 +17,7 @@ from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
-from assemblyline_v4_service.common.result import Heuristic, Result, ResultSection, BODY_FORMAT
+from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
@@ -247,19 +247,18 @@ class AvHitSection(ResultSection):
             body=json.dumps(json_body),
         )
         signature_name = f'{av_name}.{virus_name}'
-        section_heur = Heuristic(heur_id)
+        self.set_heuristic(heur_id)
         if signature_name in sig_score_revision_map:
-            section_heur.add_signature_id(signature_name, sig_score_revision_map[signature_name])
+            self.heuristic.add_signature_id(signature_name, sig_score_revision_map[signature_name])
         elif any(kw in signature_name.lower() for kw in kw_score_revision_map):
-            section_heur.add_signature_id(
+            self.heuristic.add_signature_id(
                 signature_name,
                 max([kw_score_revision_map[kw] for kw in kw_score_revision_map if kw in signature_name.lower()])
             )
         elif virus_name in safelist_match:
-            section_heur.add_signature_id(signature_name, 0)
+            self.heuristic.add_signature_id(signature_name, 0)
         else:
-            section_heur.add_signature_id(signature_name)
-        self.heuristic = section_heur
+            self.heuristic.add_signature_id(signature_name)
         self.add_tag('av.virus_name', virus_name)
         if heur_id == 2:
             self.add_tag("av.heuristic", virus_name)
@@ -702,9 +701,8 @@ class AntiVirus(ServiceBase):
                 body["no_threat_detected"] = [host for host in no_result_hosts]
             if av_errors:
                 body["errors_during_scanning"] = [host for host in av_errors]
-            no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)",
-                                          body_format=BODY_FORMAT.KEY_VALUE,
-                                          body=json.dumps(body))
+            no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
+            no_threat_sec.set_body(json.dumps(body), BODY_FORMAT.KEY_VALUE)
             result.add_section(no_threat_sec)
 
     @staticmethod
