@@ -39,20 +39,7 @@ def check_section_equality(this, that) -> bool:
 
     # Heuristics also need their own equality checks
     if this.heuristic and that.heuristic:
-        heuristic_equality = this.heuristic.definition.attack_id == that.heuristic.definition.attack_id and \
-            this.heuristic.definition.classification == that.heuristic.definition.classification and \
-            this.heuristic.definition.description == that.heuristic.definition.description and \
-            this.heuristic.definition.filetype == that.heuristic.definition.filetype and \
-            this.heuristic.definition.heur_id == that.heuristic.definition.heur_id and \
-            this.heuristic.definition.id == that.heuristic.definition.id and \
-            this.heuristic.definition.max_score == that.heuristic.definition.max_score and \
-            this.heuristic.definition.name == that.heuristic.definition.name and \
-            this.heuristic.definition.score == that.heuristic.definition.score and \
-            this.heuristic.definition.signature_score_map == \
-            that.heuristic.definition.signature_score_map
-
-        result_heuristic_equality = heuristic_equality and \
-            this.heuristic.attack_ids == that.heuristic.attack_ids and \
+        result_heuristic_equality = this.heuristic.attack_ids == that.heuristic.attack_ids and \
             this.heuristic.frequency == that.heuristic.frequency and \
             this.heuristic.heur_id == that.heuristic.heur_id and \
             this.heuristic.score == that.heuristic.score and \
@@ -656,7 +643,7 @@ class TestAntiVirus:
                 correct_result_section.set_heuristic(expected_heuristic)
             if virus_name and correct_result_section.heuristic:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
-            correct_result_section.tags = expected_tags
+            correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
             test_result_sections = antivirus_class_instance._parse_icap_results(
                 icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
@@ -691,7 +678,7 @@ class TestAntiVirus:
                 correct_result_section.set_heuristic(expected_heuristic)
             if virus_name and correct_result_section.heuristic:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
-            correct_result_section.tags = expected_tags
+            correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
             test_result_section = antivirus_class_instance._parse_http_results(
                 http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
