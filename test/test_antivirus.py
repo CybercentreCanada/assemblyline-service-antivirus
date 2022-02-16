@@ -501,6 +501,16 @@ class TestAntiVirus:
         assert test_result_response == correct_result_response
 
     @staticmethod
+    def test_stop(antivirus_class_instance):
+        products = [{"product": "blah", "hosts": [{"ip": "blah", "port": 1, "method": "icap", "update_period": 1}]}]
+        antivirus_class_instance.config["av_config"]["products"] = products
+        antivirus_class_instance.start()
+        antivirus_class_instance.stop()
+        for host in antivirus_class_instance.hosts:
+            assert host.client.kill
+            assert host.client.socket is None
+
+    @staticmethod
     def test_get_hosts():
         from antivirus import AntiVirus, AntiVirusHost
         products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "icap_scan_details": {

@@ -371,6 +371,13 @@ class AntiVirus(ServiceBase):
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
+    def stop(self) -> None:
+        self.log.debug("Stopping the AntiVirus service...")
+        # Close all ICAP connections
+        for host in self.hosts:
+            if host.method == ICAP_METHOD:
+                host.client.close()
+
     @staticmethod
     def _get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
         """
