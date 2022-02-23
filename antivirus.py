@@ -13,6 +13,7 @@ from random import choice
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.common.str_utils import safe_str
+from assemblyline.odm.models.ontology.types.antivirus import Antivirus
 from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.icap import IcapClient
@@ -364,6 +365,8 @@ class AntiVirus(ServiceBase):
             f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit "
             "result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
+        data = AntiVirus._preprocess_ontological_result(request.result.sections)
+        self.attach_ontological_result(request, Antivirus, data=data)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     def stop(self) -> None:
@@ -777,3 +780,46 @@ class AntiVirus(ServiceBase):
         elif suggested_scan_timeout > max_service_timeout:
             suggested_scan_timeout = max_service_timeout - MIN_POST_SCAN_TIME_IN_SECONDS
         return suggested_scan_timeout
+
+    @staticmethod
+    def _preprocess_ontological_result(sections: List[ResultKeyValueSection]) -> Dict[str, Any]:
+        detections = {
+            'detections': [],
+        }
+        for section in sections:
+            detection = {
+                "detection": {
+                    "engine": {
+                        "name": None,
+                        "version": None,
+                        "definition": {
+                            "update_time": None,
+                            "version": None,
+                        },
+                    },
+                    "category": None,
+                    "virus_name": None
+                }
+            }
+            details = section.section_body._data
+            if "errors_during_scanning" in details:
+                for host in details["errors_during_scanning"]:
+                    detection["detection"]["engine"]["name"] = host
+                    detection["detection"]["category"] = "failure"
+                    detections["detections"].append(detection)
+
+            if "no_threat_detected" in details:
+                for host in details["no_threat_detected"]:
+                    detection["detection"]["engine"]["name"] = host
+                    detection["detection"]["category"] = "harmless"
+                    detections["detections"].append(detection)
+
+            if "errors_during_scanning" not in details and "no_threat_detected" not in details:
+                detection["detection"]["engine"]["name"] = details["av_name"]
+                detection["detection"]["engine"]["version"] = details.get("av_version")
+                detection["detection"]["engine"]["definition"]["update_time"] = details.get("engine_definition_time")
+                detection["detection"]["engine"]["definition"]["version"] = details.get("engine_version")
+                detection["detection"]["category"] = "malicious" if details["scan_result"] == "infected" else details["scan_result"]
+                detection["detection"]["virus_name"] = details["virus_name"]
+                detections["detections"].append(detection)
+        return detections

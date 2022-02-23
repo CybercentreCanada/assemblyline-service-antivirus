@@ -454,7 +454,7 @@ class TestAntiVirus:
 
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
-    def test_execute(sample, antivirus_class_instance, antivirushost_class, mocker):
+    def test_execute(sample, antivirus_class_instance, mocker):
         from assemblyline_v4_service.common.task import Task
         from assemblyline.odm.messages.task import Task as ServiceTask
         from assemblyline_v4_service.common.request import ServiceRequest
@@ -471,6 +471,7 @@ class TestAntiVirus:
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_thr_process_file")
         mocker.patch.object(AntiVirus, "_gather_results")
+        mocker.patch.object(AntiVirus, "attach_ontological_result")
 
         # Actually executing the sample
         antivirus_class_instance.execute(service_request)
@@ -724,7 +725,7 @@ class TestAntiVirus:
 
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
-    def test_determine_service_context(sample, antivirus_class_instance):
+    def test_determine_service_context(sample):
         from assemblyline_v4_service.common.request import ServiceRequest
         from assemblyline_v4_service.common.task import Task
         from assemblyline.odm.messages.task import Task as ServiceTask
@@ -732,7 +733,6 @@ class TestAntiVirus:
         from antivirus import AntiVirus, AntiVirusHost
         from time import time
         from math import floor
-        from datetime import datetime
         service_task = ServiceTask(sample)
         task = Task(service_task)
         service_request = ServiceRequest(task)
@@ -748,7 +748,7 @@ class TestAntiVirus:
         assert service_request.task.service_context == f"Engine Update Range: {lower_range_date} - {upper_range_date}"
 
     @staticmethod
-    def test_determine_hosts_to_use(antivirus_class_instance):
+    def test_determine_hosts_to_use():
         from antivirus import AntiVirus, AntiVirusHost
         different_group_av_host = AntiVirusHost("blah1", "blah", 1, "icap", 1)
         sleeping_av_host = AntiVirusHost("blah2", "blah", 1, "icap", 1)
@@ -783,3 +783,41 @@ class TestAntiVirus:
     def test_determine_scan_timeout_by_size(max_service_timeout, file_size, expected_result):
         from antivirus import AntiVirus
         assert AntiVirus._determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result
+
+    @staticmethod
+    def test_preprocess_ontological_result():
+        from antivirus import AntiVirus, AvHitSection
+        from assemblyline_v4_service.common.result import ResultKeyValueSection
+        hit_1_sec = AvHitSection("blah", "blah", "blah", {}, 1, {}, {}, [])
+        hit_2_sec = AvHitSection("blahblah", ";:abc=", "bad", {"version": "blah", "def_time": 1}, 2, {}, {}, [])
+        no_result_section = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
+        no_result_section.set_item("errors_during_scanning", ["a", "b"])
+        no_result_section.set_item("no_threat_detected", ["c", "d"])
+        assert AntiVirus._preprocess_ontological_result(
+            [hit_1_sec, hit_2_sec, no_result_section]) == {
+            'detections':
+            [{
+                'detection':
+                {'engine': {'name': 'blah', 'version': 'blah', 'definition': {'update_time': None, 'version': None}},
+                 'category': 'malicious', 'virus_name': 'blah'}},
+             {
+                'detection':
+                {'engine':
+                 {'name': 'blahblah', 'version': ';:abc=', 'definition': {'update_time': 1, 'version': 'blah'}},
+                    'category': 'suspicious', 'virus_name': 'bad'}},
+             {
+                'detection':
+                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
+                 'category': 'harmless', 'virus_name': None}},
+             {
+                'detection':
+                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
+                 'category': 'harmless', 'virus_name': None}},
+             {
+                'detection':
+                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
+                 'category': 'harmless', 'virus_name': None}},
+             {
+                'detection':
+                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
+                 'category': 'harmless', 'virus_name': None}}]}
