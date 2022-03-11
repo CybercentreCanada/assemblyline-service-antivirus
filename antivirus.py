@@ -17,7 +17,7 @@ from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
-from assemblyline_v4_service.common.result import Result, ResultSection, BODY_FORMAT
+from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
@@ -203,9 +203,9 @@ class HTTPScanDetails:
             self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
 
 
-class AvHitSection(ResultSection):
+class AvHitSection(ResultKeyValueSection):
     """
-    This class represents an Assemblyline Service ResultSection specifically for antivirus products
+    This class represents an Assemblyline Service ResultKeyValueSection specifically for antivirus products
     """
 
     def __init__(self, av_name: str, av_version: Optional[str], virus_name: str, engine: Dict[str, str],
@@ -227,25 +227,18 @@ class AvHitSection(ResultSection):
         for char_to_strip in CHARS_TO_STRIP:
             virus_name = virus_name.replace(char_to_strip, "")
 
-        title = f"{av_name} identified the file as {virus_name}"
-        json_body = dict(
-            av_name=av_name,
-            virus_name=virus_name,
-            scan_result="infected" if heur_id == 1 else "suspicious",
-        )
+        super(AvHitSection, self).__init__(f"{av_name} identified the file as {virus_name}")
+        self.set_item("av_name", av_name)
+        self.set_item("virus_name", virus_name)
+        self.set_item("scan_result", "infected" if heur_id == 1 else "suspicious")
 
         if engine:
-            json_body["engine_version"] = engine['version']
-            json_body["engine_definition_time"] = engine['def_time']
+            self.set_item("engine_version", engine['version'])
+            self.set_item("engine_definition_time", engine['def_time'])
 
         if av_version:
-            json_body["av_version"] = av_version
+            self.set_item("av_version", av_version)
 
-        super(AvHitSection, self).__init__(
-            title_text=title,
-            body_format=BODY_FORMAT.KEY_VALUE,
-            body=json.dumps(json_body),
-        )
         signature_name = f'{av_name}.{virus_name}'
         self.set_heuristic(heur_id)
         if signature_name in sig_score_revision_map:
@@ -703,13 +696,11 @@ class AntiVirus(ServiceBase):
             host_groups = [host.group for host in hosts]
             no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(
                 host_group in result_section.body for result_section in hit_result_sections)]
-            body = dict()
+            no_threat_sec = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
             if no_result_hosts:
-                body["no_threat_detected"] = [host for host in no_result_hosts]
+                no_threat_sec.set_item("no_threat_detected", [host for host in no_result_hosts])
             if av_errors:
-                body["errors_during_scanning"] = [host for host in av_errors]
-            no_threat_sec = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
-            no_threat_sec.set_body(json.dumps(body), BODY_FORMAT.KEY_VALUE)
+                no_threat_sec.set_item("errors_during_scanning", [host for host in av_errors])
             result.add_section(no_threat_sec)
 
     @staticmethod
