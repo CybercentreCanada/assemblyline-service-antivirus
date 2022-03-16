@@ -34,6 +34,8 @@ MAX_FILE_SIZE_IN_MEGABYTES = 100
 ERROR_RESULT = "ERROR"
 # If the AV product blocks the file but doesn't provide a Virus ID
 NO_AV_PROVIDED = "Unknown"
+# Generic ICAP response text indicating a virus was found
+VIRUS_FOUND = "VirusFound"
 
 
 class AntiVirusHost:
@@ -568,6 +570,12 @@ class AntiVirus(ServiceBase):
             if line.startswith(virus_name_header):
                 virus_name = line[len(virus_name_header) + 1:].strip()
                 break
+
+        if not virus_name:
+            for line in result_lines:
+                if VIRUS_FOUND in line:
+                    virus_name = NO_AV_PROVIDED
+                    break
 
         if not virus_name:
             return av_hits
