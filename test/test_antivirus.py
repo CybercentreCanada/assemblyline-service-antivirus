@@ -624,6 +624,10 @@ class TestAntiVirus:
           {"av.virus_name": ["virus_name"]},
           1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
           '"infected", "av_version": "blah"}'),
+         ("blah\nVirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+          {"av.virus_name": ["Unknown"]},
+          1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
+          '"infected", "av_version": "blah"}'),
          ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
