@@ -366,7 +366,7 @@ class AntiVirus(ServiceBase):
             "result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
         data = AntiVirus._preprocess_ontological_result(request.result.sections)
-        self.attach_ontological_result(request, Antivirus, data=data)
+        self.attach_ontological_result(Antivirus, data)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     def stop(self) -> None:
@@ -788,38 +788,32 @@ class AntiVirus(ServiceBase):
         }
         for section in sections:
             detection = {
-                "detection": {
                     "engine": {
                         "name": None,
                         "version": None,
-                        "definition": {
-                            "update_time": None,
-                            "version": None,
-                        },
+                    "definition_version": None,
                     },
                     "category": None,
                     "virus_name": None
                 }
-            }
             details = section.section_body._data
             if "errors_during_scanning" in details:
                 for host in details["errors_during_scanning"]:
-                    detection["detection"]["engine"]["name"] = host
-                    detection["detection"]["category"] = "failure"
+                    detection["engine"]["name"] = host
+                    detection["category"] = "failure"
                     detections["detections"].append(detection)
 
             if "no_threat_detected" in details:
                 for host in details["no_threat_detected"]:
-                    detection["detection"]["engine"]["name"] = host
-                    detection["detection"]["category"] = "harmless"
+                    detection["engine"]["name"] = host
+                    detection["category"] = "harmless"
                     detections["detections"].append(detection)
 
             if "errors_during_scanning" not in details and "no_threat_detected" not in details:
-                detection["detection"]["engine"]["name"] = details["av_name"]
-                detection["detection"]["engine"]["version"] = details.get("av_version")
-                detection["detection"]["engine"]["definition"]["update_time"] = details.get("engine_definition_time")
-                detection["detection"]["engine"]["definition"]["version"] = details.get("engine_version")
-                detection["detection"]["category"] = "malicious" if details["scan_result"] == "infected" else details["scan_result"]
-                detection["detection"]["virus_name"] = details["virus_name"]
+                detection["engine"]["name"] = details["av_name"]
+                detection["engine"]["version"] = details.get("av_version")
+                detection["engine"]["definition_version"] = details.get("engine_version")
+                detection["category"] = "malicious" if details["scan_result"] == "infected" else details["scan_result"]
+                detection["virus_name"] = details["virus_name"]
                 detections["detections"].append(detection)
         return detections

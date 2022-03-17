@@ -797,27 +797,21 @@ class TestAntiVirus:
             [hit_1_sec, hit_2_sec, no_result_section]) == {
             'detections':
             [{
-                'detection':
-                {'engine': {'name': 'blah', 'version': 'blah', 'definition': {'update_time': None, 'version': None}},
-                 'category': 'malicious', 'virus_name': 'blah'}},
+                'engine': {'name': 'blah', 'version': 'blah', 'definition_version': None},
+                 'category': 'malicious', 'virus_name': 'blah'},
              {
-                'detection':
-                {'engine':
-                 {'name': 'blahblah', 'version': ';:abc=', 'definition': {'update_time': 1, 'version': 'blah'}},
-                    'category': 'suspicious', 'virus_name': 'bad'}},
+                'engine':
+                 {'name': 'blahblah', 'version': ';:abc=', 'definition_version': 'blah'},
+                    'category': 'suspicious', 'virus_name': 'bad'},
              {
-                'detection':
-                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
-                 'category': 'harmless', 'virus_name': None}},
+                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                 'category': 'harmless', 'virus_name': None},
              {
-                'detection':
-                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
-                 'category': 'harmless', 'virus_name': None}},
+                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                 'category': 'harmless', 'virus_name': None},
              {
-                'detection':
-                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
-                 'category': 'harmless', 'virus_name': None}},
+                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                 'category': 'harmless', 'virus_name': None},
              {
-                'detection':
-                {'engine': {'name': 'd', 'version': None, 'definition': {'update_time': None, 'version': None}},
-                 'category': 'harmless', 'virus_name': None}}]}
+                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                 'category': 'harmless', 'virus_name': None}]}
