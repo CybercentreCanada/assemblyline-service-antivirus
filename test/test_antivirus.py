@@ -798,19 +798,19 @@ class TestAntiVirus:
             'detections':
             [{
                 'engine': {'name': 'blah', 'version': 'blah', 'definition_version': None},
-                 'category': 'malicious', 'virus_name': 'blah'},
+                'category': 'malicious', 'virus_name': 'blah'},
              {
                 'engine':
                  {'name': 'blahblah', 'version': ';:abc=', 'definition_version': 'blah'},
                     'category': 'suspicious', 'virus_name': 'bad'},
              {
-                'engine': {'name': 'd', 'version': None, 'definition_version': None},
-                 'category': 'harmless', 'virus_name': None},
+                'engine': {'name': 'a', 'version': None, 'definition_version': None},
+                 'category': 'failure', 'virus_name': None},
              {
-                'engine': {'name': 'd', 'version': None, 'definition_version': None},
-                 'category': 'harmless', 'virus_name': None},
+                'engine': {'name': 'b', 'version': None, 'definition_version': None},
+                 'category': 'failure', 'virus_name': None},
              {
-                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                'engine': {'name': 'c', 'version': None, 'definition_version': None},
                  'category': 'harmless', 'virus_name': None},
              {
                 'engine': {'name': 'd', 'version': None, 'definition_version': None},
