@@ -1,14 +1,15 @@
-import json
-from typing import Optional, Dict, List, Any, Set, Union
+from base64 import b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
-from threading import Thread
-from time import sleep, time
+from copy import deepcopy
+import json
 from math import floor
 from os.path import getsize
-from requests import Session
-from base64 import b64encode
-from re import search
 from random import choice
+from re import search
+from requests import Session
+from time import sleep, time
+from threading import Thread
+from typing import Optional, Dict, List, Any, Set, Union
 
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
@@ -788,26 +789,28 @@ class AntiVirus(ServiceBase):
         }
         for section in sections:
             detection = {
-                    "engine": {
-                        "name": None,
-                        "version": None,
+                "engine": {
+                    "name": None,
+                    "version": None,
                     "definition_version": None,
-                    },
-                    "category": None,
-                    "virus_name": None
-                }
+                },
+                "category": None,
+                "virus_name": None
+            }
             details = section.section_body._data
             if "errors_during_scanning" in details:
                 for host in details["errors_during_scanning"]:
-                    detection["engine"]["name"] = host
-                    detection["category"] = "failure"
-                    detections["detections"].append(detection)
+                    failed_detection = deepcopy(detection)
+                    failed_detection["engine"]["name"] = host
+                    failed_detection["category"] = "failure"
+                    detections["detections"].append(failed_detection)
 
             if "no_threat_detected" in details:
                 for host in details["no_threat_detected"]:
-                    detection["engine"]["name"] = host
-                    detection["category"] = "harmless"
-                    detections["detections"].append(detection)
+                    harmless_detection = deepcopy(detection)
+                    harmless_detection["engine"]["name"] = host
+                    harmless_detection["category"] = "harmless"
+                    detections["detections"].append(harmless_detection)
 
             if "errors_during_scanning" not in details and "no_threat_detected" not in details:
                 detection["engine"]["name"] = details["av_name"]
