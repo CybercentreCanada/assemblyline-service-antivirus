@@ -811,7 +811,7 @@ class TestAntiVirus:
                  'category': 'failure', 'virus_name': None},
              {
                 'engine': {'name': 'c', 'version': None, 'definition_version': None},
-                 'category': 'harmless', 'virus_name': None},
+                 'category': 'undetected', 'virus_name': None},
              {
                 'engine': {'name': 'd', 'version': None, 'definition_version': None},
-                 'category': 'harmless', 'virus_name': None}]}
+                 'category': 'undetected', 'virus_name': None}]}

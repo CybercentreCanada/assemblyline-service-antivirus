@@ -807,10 +807,10 @@ class AntiVirus(ServiceBase):
 
             if "no_threat_detected" in details:
                 for host in details["no_threat_detected"]:
-                    harmless_detection = deepcopy(detection)
-                    harmless_detection["engine"]["name"] = host
-                    harmless_detection["category"] = "harmless"
-                    detections["detections"].append(harmless_detection)
+                    undetected_detection = deepcopy(detection)
+                    undetected_detection["engine"]["name"] = host
+                    undetected_detection["category"] = "undetected"
+                    detections["detections"].append(undetected_detection)
 
             if "errors_during_scanning" not in details and "no_threat_detected" not in details:
                 detection["engine"]["name"] = details["av_name"]
