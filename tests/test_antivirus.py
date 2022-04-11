@@ -797,21 +797,20 @@ class TestAntiVirus:
             [hit_1_sec, hit_2_sec, no_result_section]) == {
             'detections':
             [{
-                'engine': {'name': 'blah', 'version': 'blah', 'definition_version': None},
+                'engine_name': 'blah', 'engine_version': 'blah', 'engine_definition_version': None,
                 'category': 'malicious', 'virus_name': 'blah'},
              {
-                'engine':
-                 {'name': 'blahblah', 'version': ';:abc=', 'definition_version': 'blah'},
+                'engine_name': 'blahblah', 'engine_version': ';:abc=', 'engine_definition_version': 'blah',
                     'category': 'suspicious', 'virus_name': 'bad'},
              {
-                'engine': {'name': 'a', 'version': None, 'definition_version': None},
+                'engine_name': 'a', 'engine_version': None, 'engine_definition_version': None,
                  'category': 'failure', 'virus_name': None},
              {
-                'engine': {'name': 'b', 'version': None, 'definition_version': None},
+                'engine_name': 'b', 'engine_version': None, 'engine_definition_version': None,
                  'category': 'failure', 'virus_name': None},
              {
-                'engine': {'name': 'c', 'version': None, 'definition_version': None},
+                'engine_name': 'c', 'engine_version': None, 'engine_definition_version': None,
                  'category': 'undetected', 'virus_name': None},
              {
-                'engine': {'name': 'd', 'version': None, 'definition_version': None},
+                'engine_name': 'd', 'engine_version': None, 'engine_definition_version': None,
                  'category': 'undetected', 'virus_name': None}]}
