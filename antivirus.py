@@ -789,11 +789,9 @@ class AntiVirus(ServiceBase):
         }
         for section in sections:
             detection = {
-                "engine": {
-                    "name": None,
-                    "version": None,
-                    "definition_version": None,
-                },
+                "engine_name":  None,
+                "engine_version": None,
+                "engine_definition_version": None,
                 "category": None,
                 "virus_name": None
             }
@@ -801,21 +799,21 @@ class AntiVirus(ServiceBase):
             if "errors_during_scanning" in details:
                 for host in details["errors_during_scanning"]:
                     failed_detection = deepcopy(detection)
-                    failed_detection["engine"]["name"] = host
+                    failed_detection["engine_name"] = host
                     failed_detection["category"] = "failure"
                     detections["detections"].append(failed_detection)
 
             if "no_threat_detected" in details:
                 for host in details["no_threat_detected"]:
                     undetected_detection = deepcopy(detection)
-                    undetected_detection["engine"]["name"] = host
+                    undetected_detection["engine_name"] = host
                     undetected_detection["category"] = "undetected"
                     detections["detections"].append(undetected_detection)
 
             if "errors_during_scanning" not in details and "no_threat_detected" not in details:
-                detection["engine"]["name"] = details["av_name"]
-                detection["engine"]["version"] = details.get("av_version")
-                detection["engine"]["definition_version"] = details.get("engine_version")
+                detection["engine_name"] = details["av_name"]
+                detection["engine_version"] = details.get("av_version")
+                detection["engine_definition_version"] = details.get("engine_version")
                 detection["category"] = "malicious" if details["scan_result"] == "infected" else details["scan_result"]
                 detection["virus_name"] = details["virus_name"]
                 detections["detections"].append(detection)
