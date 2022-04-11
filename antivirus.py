@@ -496,7 +496,7 @@ class AntiVirus(ServiceBase):
             self.log.warning(
                 f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. "
                 f"Going to sleep for {self.retry_period}s.")
-            Thread(target=host.sleep, args=[self.retry_period]).start()
+            Thread(target=host.sleep, args=[self.retry_period], daemon=True).start()
             results = ERROR_RESULT
         return results, version, host
 
