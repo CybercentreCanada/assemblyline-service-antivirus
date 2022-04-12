@@ -21,7 +21,10 @@ If you are a vendor and would like to see your product added below please reach 
   * **products**: A list of antivirus products. See below for an in-depth description of this parameter.
   * **kw_score_revision_map**: A dictionary where the keys are the keywords that could be found in signatures, and the value is the revised score
   * **sig_score_revision_map**: A dictionary where the keys are the signatures that you want to revise, and the values are the scores that the signatures will be revised to
-* **retry_period**: If an antivirus product is down for whatever reason, this is the number of seconds that the service will wait before it tries to send a file to that antivirus product again
+* **sleep_time**: If an antivirus product is down for whatever reason, this is the number of seconds that the service will wait before it tries to send a file to that antivirus product again
+* **connection_timeout**: The timeout for creating an ICAP connection
+* **number_of_retries**: The number of attempts to create an ICAP connection
+* **mercy_limit**: The number of files that are allowed to not be completed in time by an engine before the engine is put to sleep
 * **check_completion_interval**: The wait time in milliseconds between checking if threads have completed
 
 ## How to add an antivirus product?
@@ -55,7 +58,7 @@ av_config:
       method: "icap"
       update_period: 240
       file_size_limit: 30000000
-      icap_scan_details:
+      scan_details:
         scan_endpoint: "resp"
 
     # HTTP host
@@ -63,7 +66,7 @@ av_config:
       port: 8000
       method: "http"
       update_period: 240
-      http_scan_details:
+      scan_details:
         post_data_type: "json"
         version_endpoint: "version"
         scan_endpoint: "api/v3.1/scanmemory"
@@ -83,10 +86,9 @@ av_config:
     - ip: "<ip>"
       port: 9090
       method: "http"
-      http_scan_details:
+      scan_details:
         post_data_type: "data"
         result_in_headers: True
-        via_proxy: True
         virus_name_header: "X-Virus-Name"
         scan_endpoint: "filescanner"
       update_period: 240
@@ -96,7 +98,7 @@ av_config:
     - ip: "<ip>"
       port: 1344
       method: "icap"
-      icap_scan_details:
+      scan_details:
         no_version: true
         virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
       update_period: 240
@@ -124,5 +126,4 @@ av_config:
 - `json_key_for_post`: If the file contents will be POSTed to the antivirus product as the value in a JSON key-value pair, this value is the key.
 - `result_in_headers`: A boolean indicating if the antivirus signature will be found in the response headers.
 - `base64_encode`: A boolean indicating if the file contents should be base64 encoded prior to being POSTed to the antivirus product server.
-- `via_proxy`: A boolean indicating if the antivirus product service is a proxy. This is used to grab the antivirus product service version from the response headers.
 - `version_endpoint`: The URI endpoint at which the service is listening for a GET for the antivirus product service version.

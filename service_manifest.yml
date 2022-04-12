@@ -33,7 +33,7 @@ config:
         hosts:
           - ip: "localhost"
             port: 8000
-            http_scan_details:
+            scan_details:
               version_endpoint: "version"
               scan_endpoint: "scan"
             method: "http"
@@ -45,7 +45,10 @@ config:
     # ODM so we cannot use them in the heuristic signature_score_map. Hence why we're putting this here.
     sig_score_revision_map:
       blahblahblah: 0
-  retry_period: 60  # in seconds
+  sleep_time: 60  # in seconds
+  connection_timeout: 10  # in seconds
+  number_of_retries: 3
+  mercy_limit: 5
 
 heuristics:
   - heur_id: 1
