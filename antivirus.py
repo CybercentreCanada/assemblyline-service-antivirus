@@ -637,7 +637,7 @@ class AntiVirus(ServiceBase):
             "result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
         data = AntiVirus._preprocess_ontological_result(request.result.sections)
-        self.ontology.add_result_part(Antivirus, data)
+        [self.ontology.add_result_part(Antivirus, d) for d in data]
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     def stop(self) -> None:
@@ -877,9 +877,7 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _preprocess_ontological_result(sections: List[ResultKeyValueSection]) -> Dict[str, Any]:
-        detections = {
-            'detections': [],
-        }
+        detections = []
         for section in sections:
             detection = {
                 "engine_name":  None,
@@ -894,14 +892,14 @@ class AntiVirus(ServiceBase):
                     failed_detection = deepcopy(detection)
                     failed_detection["engine_name"] = host
                     failed_detection["category"] = "failure"
-                    detections["detections"].append(failed_detection)
+                    detections.append(failed_detection)
 
             if "no_threat_detected" in details:
                 for host in details["no_threat_detected"]:
                     undetected_detection = deepcopy(detection)
                     undetected_detection["engine_name"] = host
                     undetected_detection["category"] = "undetected"
-                    detections["detections"].append(undetected_detection)
+                    detections.append(undetected_detection)
 
             if "errors_during_scanning" not in details and "no_threat_detected" not in details:
                 detection["engine_name"] = details["av_name"]
@@ -909,5 +907,5 @@ class AntiVirus(ServiceBase):
                 detection["engine_definition_version"] = details.get("engine_version")
                 detection["category"] = "malicious" if details["scan_result"] == "infected" else details["scan_result"]
                 detection["virus_name"] = details["virus_name"]
-                detections["detections"].append(detection)
+                detections.append(detection)
         return detections
