@@ -654,7 +654,6 @@ class TestAntiVirus:
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_thr_process_file")
         mocker.patch.object(AntiVirus, "_gather_results")
-        mocker.patch.object(AntiVirus, "attach_ontological_result")
 
         # Actually executing the sample
         antivirus_class_instance.execute(service_request)
