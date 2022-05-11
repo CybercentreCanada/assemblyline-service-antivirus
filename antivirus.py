@@ -14,7 +14,7 @@ from typing import Optional, Dict, List, Any, Set, Union
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.common.str_utils import safe_str
-from assemblyline.odm.models.ontology.types.antivirus import Antivirus
+from assemblyline.odm.models.ontology.results.antivirus import Antivirus
 from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.icap import IcapClient
@@ -637,7 +637,7 @@ class AntiVirus(ServiceBase):
             "result sections to the Result")
         AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
         data = AntiVirus._preprocess_ontological_result(request.result.sections)
-        self.attach_ontological_result(Antivirus, data)
+        self.ontology.add_result_part(Antivirus, data)
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     def stop(self) -> None:
