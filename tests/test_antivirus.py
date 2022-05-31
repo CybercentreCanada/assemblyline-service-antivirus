@@ -260,18 +260,20 @@ class TestIcapScanDetails:
         assert no_details.virus_name_header == "X-Virus-ID"
         assert no_details.scan_endpoint == ""
         assert no_details.no_version is False
+        assert no_details.version_header is None
 
-        with_details = IcapScanDetails("blah", "blah", True)
+        with_details = IcapScanDetails("blah", "blah", True, "blah")
         assert with_details.virus_name_header == "blah"
         assert with_details.scan_endpoint == "blah"
         assert with_details.no_version is True
+        assert with_details.version_header == "blah"
 
     @staticmethod
     def test_eq():
         from antivirus import IcapScanDetails
         icap1 = IcapScanDetails()
         icap2 = IcapScanDetails()
-        icap3 = IcapScanDetails("blah", "blah", True)
+        icap3 = IcapScanDetails("blah", "blah", True, "blah")
         assert icap1 == icap2
         assert icap1 != icap3
 
@@ -428,17 +430,18 @@ class TestIcapHostClient:
 
     @staticmethod
     @pytest.mark.parametrize(
-        "version_result, correct_result",
+        "version_result, version_header, correct_result",
         [
-            ("", None),
-            ("blah", None),
-            ("Server:blah", "blah"),
-            ("Service:blah", "blah"),
+            ("", None, None),
+            ("blah", None, None),
+            ("Server:blah", None, "blah"),
+            ("Service:blah", None, "blah"),
+            ("blah:blah", "blah:", "blah"),
         ]
     )
-    def test_icap_host_client_parse_version(version_result, correct_result):
+    def test_icap_host_client_parse_version(version_result, version_header, correct_result):
         from antivirus import IcapHostClient
-        assert IcapHostClient.parse_version(version_result) == correct_result
+        assert IcapHostClient.parse_version(version_result, version_header) == correct_result
 
     @staticmethod
     @pytest.mark.parametrize(
@@ -464,7 +467,7 @@ class TestIcapHostClient:
           {"av.virus_name": ["virus_heur"],
            "av.heuristic": ["virus_heur"]},
           2, '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'), ])
-    def test_icap_host_parse_scan_results(
+    def test_icap_host_parse_scan_result(
             icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
         from antivirus import IcapHostClient
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
