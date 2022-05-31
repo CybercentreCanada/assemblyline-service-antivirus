@@ -15,6 +15,8 @@ If you are a vendor and would like to see your product added below please reach 
   - https://help.eset.com/efs/8/en-US/
 - Bitdefender Security Server v6.2.4.11063, with ICAP scanning enabled
   - https://www.bitdefender.com/business/support/en/77212-96386-security-server.html
+- F-Secure Atlant v2.0.230
+  - https://help.f-secure.com/product.html#business/atlant/latest/en/concept_94067ECBA705473F9BC72F4282C2338D-latest-en
 
 ## Service Options
 * **av_config**: Dictionary containing details that we will use for revising or omitting antivirus signature hits
@@ -47,70 +49,82 @@ av_config:
     # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of
     # Assemblyline, rather than "Malicious".
     heuristic_analysis_keys:
-    - "HEUR:"
+      - "HEUR:"
 
     # A list of hosts
     hosts:
 
-    # ICAP host
-    - ip: "<ip>"
-      port: 1344
-      method: "icap"
-      update_period: 240
-      file_size_limit: 30000000
-      scan_details:
-        scan_endpoint: "resp"
+      # ICAP host
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        update_period: 240
+        file_size_limit: 30000000
+        scan_details:
+          scan_endpoint: "resp"
 
-    # HTTP host
-    - ip: "<ip>"
-      port: 8000
-      method: "http"
-      update_period: 240
-      scan_details:
-        post_data_type: "json"
-        version_endpoint: "version"
-        scan_endpoint: "api/v3.1/scanmemory"
-        base64_encode: True
-        json_key_for_post: "object"
-        virus_name_header: "detectionName"
+      # HTTP host
+      - ip: "<ip>"
+        port: 8000
+        method: "http"
+        update_period: 240
+        scan_details:
+          post_data_type: "json"
+          version_endpoint: "version"
+          scan_endpoint: "api/v3.1/scanmemory"
+          base64_encode: True
+          json_key_for_post: "object"
+          virus_name_header: "detectionName"
 
   - product: "McAfee"
     heuristic_analysis_keys:
-    - "HEUR/"
-    - "BehavesLike."
+      - "HEUR/"
+      - "BehavesLike."
     hosts:
-    - ip: "<ip>"
-      port: 1344
-      method: "icap"
-      update_period: 240
-    - ip: "<ip>"
-      port: 9090
-      method: "http"
-      scan_details:
-        post_data_type: "data"
-        result_in_headers: True
-        virus_name_header: "X-Virus-Name"
-        scan_endpoint: "filescanner"
-      update_period: 240
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        update_period: 240
+      - ip: "<ip>"
+        port: 9090
+        method: "http"
+        scan_details:
+          post_data_type: "data"
+          result_in_headers: True
+          virus_name_header: "X-Virus-Name"
+          scan_endpoint: "filescanner"
+        update_period: 240
 
   - product: "ESET"
     hosts:
-    - ip: "<ip>"
-      port: 1344
-      method: "icap"
-      scan_details:
-        no_version: true
-        virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
-      update_period: 240
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        scan_details:
+          no_version: true
+          virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
+        update_period: 240
 
   - product: "Bitdefender"
     heuristic_analysis_keys:
-    - "Gen:Heur"
+      - "Gen:Heur"
     hosts:
-    - ip: "<ip>"
-      port: 1344
-      method: "icap"
-      update_period: 240
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        update_period: 240
+
+  - product: "F-Secure"
+    heuristic_analysis_keys:
+      - "Heuristic.HEUR/"
+    hosts:
+      - ip: "<ip>"
+        port: 1344
+        method: "icap"
+        scan_details:
+          virus_name_header: "X-FSecure-Infection-Name"
+          version_header: "X-FSecure-Versions:"
+        update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
@@ -118,6 +132,7 @@ av_config:
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.
 - `scan_endpoint`: The URI endpoint at which the service is listening for file contents to be submitted or OPTIONS to be queried.
 - `no_version`: A boolean indicating if a product version will be returned if you query OPTIONS.
+- `version_header`: The name of the header of the line in the version results that contains the antivirus engine version.
 
 #### HTTP
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.

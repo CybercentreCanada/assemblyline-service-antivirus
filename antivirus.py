@@ -30,7 +30,7 @@ VALID_POST_TYPES = [POST_JSON, POST_DATA]
 DEFAULT_SLEEP_TIME = 60  # in seconds
 DEFAULT_CONNECTION_TIMEOUT = 60  # in seconds
 DEFAULT_NUMBER_OF_RETRIES = 3
-CHARS_TO_STRIP = [";", ":", "="]
+CHARS_TO_STRIP = [";", ":", "=", '"']
 MIN_SCAN_TIMEOUT_IN_SECONDS = 30
 MIN_POST_SCAN_TIME_IN_SECONDS = 10
 MAX_FILE_SIZE_IN_MEGABYTES = 100
@@ -135,10 +135,12 @@ class HostClient(ABC):
 
     @staticmethod
     @abstractmethod
-    def parse_version(version_result: Optional[str]) -> Optional[str]:
+    def parse_version(version_result: Optional[str], version_header: Optional[str] = None) -> Optional[str]:
         """
         This method parses the response of the version request
         :param version_result: The response of the version request
+        :param version_header: The name of the header of the line in the version results that contains the antivirus
+                               engine version.
         :return: A string detailing the version of the antivirus product, if applicable
         """
         raise NotImplementedError
@@ -188,13 +190,18 @@ class IcapHostClient(HostClient):
         return self.client.scan_data(file_contents, file_hash)
 
     @staticmethod
-    def parse_version(version_result: Optional[str]) -> Optional[str]:
+    def parse_version(version_result: Optional[str], version_header: Optional[str] = None) -> Optional[str]:
         version: Optional[str] = None
         if not version_result:
             return version
 
+        if version_header:
+            version_headers = [version_header]
+        else:
+            version_headers = ['Server:', 'Service:']
+
         for line in version_result.splitlines():
-            if any(line.startswith(item) for item in ['Server:', 'Service:']):
+            if any(line.startswith(item) for item in version_headers):
                 version = line[line.index(':') + 1:].strip()
                 break
         return version
@@ -206,11 +213,14 @@ class IcapHostClient(HostClient):
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
             safelist_match: List[str]) -> List[AvHitSection]:
+        global av_errors
         virus_name: Optional[str] = None
         av_hits = []
 
         result_lines = av_results.strip().splitlines()
         if len(result_lines) <= 3 and "204" not in result_lines[0]:
+            if av_name not in av_errors:
+                av_errors.append(av_name)
             raise Exception(f'Invalid result from ICAP server: {safe_str(str(av_results))}')
 
         for line in result_lines:
@@ -439,18 +449,21 @@ class IcapScanDetails:
     """
 
     def __init__(self, virus_name_header: str = "X-Virus-ID",
-                 scan_endpoint: str = "", no_version: bool = False) -> None:
+                 scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None) -> None:
         """
         This method initializes the IcapScanDetails class
         :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
         :param scan_endpoint: The URI endpoint at which the service is listening
                               for file contents to be submitted or OPTIONS to be queried.
         :param no_version: A boolean indicating if a product version will be returned if you query OPTIONS.
+        :param version_header: The name of the header of the line in the version results that contains the antivirus
+                               engine version.
         :return: None
         """
         self.virus_name_header = virus_name_header
         self.scan_endpoint = scan_endpoint
         self.no_version = no_version
+        self.version_header = version_header
 
     def __eq__(self, other):
         """
@@ -460,7 +473,8 @@ class IcapScanDetails:
         """
         if not isinstance(other, IcapScanDetails):
             return NotImplemented
-        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint
+        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint and \
+            self.no_version == other.no_version and self.version_header == other.version_header
 
 
 class HttpScanDetails:
@@ -620,12 +634,13 @@ class AntiVirus(ServiceBase):
                 for future in sets.done:
                     host = futures[future]
                     host.mercy_counter = 0
+                    # If there is an exception in a thread pool submitter, we will find out with this call
+                    future.result()
 
         except Exception as e:
             if not is_recoverable_runtime_error(e):
                 message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
                 self.log.error(message)
-            raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
@@ -695,9 +710,13 @@ class AntiVirus(ServiceBase):
         elapsed_scan_time = time() - start_scan_time
         # Step 2: Parse results
         start_parse_time = time()
-        av_version = host.host_client.parse_version(version)
+        av_version = host.host_client.parse_version(
+            version,
+            getattr(host.host_client.scan_details, "version_header", None)
+        )
         if result == ERROR_RESULT:
             av_errors.append(host.group)
+            av_hits = []
         elif result is not None:
             av_hits = host.host_client.parse_scan_result(
                 av_results=result,
