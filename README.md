@@ -7,7 +7,7 @@ failures so that we can adapt the service!
 If you are a vendor and would like to see your product added below please reach to us at: contact[_at_]cyber.gc.ca.
 
 ## What antivirus products have been tested?
-- Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP Mode and HTTP Mode
+- Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP mode and HTTP mode
   - https://www.kaspersky.com/scan-engine
 - McAfee Web Gateway with ICAP and HTTP turned on: McAfee Web Gateway 9.2.2 build 33635
   - https://docs.mcafee.com/bundle/web-gateway-9.2.x-product-guide
@@ -15,8 +15,10 @@ If you are a vendor and would like to see your product added below please reach 
   - https://help.eset.com/efs/8/en-US/
 - Bitdefender Security Server v6.2.4.11063, with ICAP scanning enabled
   - https://www.bitdefender.com/business/support/en/77212-96386-security-server.html
-- F-Secure Atlant v2.0.230
+- F-Secure Atlant v2.0.230, in ICAP mode
   - https://help.f-secure.com/product.html#business/atlant/latest/en/concept_94067ECBA705473F9BC72F4282C2338D-latest-en
+- Sophos Anti-Virus Dynamic Interface with Engine v3.85.1, in ICAP mode
+  - https://www.sophos.com/en-us/medialibrary/PDFs/documentation/SAVDI-User-Manual.pdf
 
 ## Service Options
 * **av_config**: Dictionary containing details that we will use for revising or omitting antivirus signature hits
@@ -43,88 +45,98 @@ Example of `av_config` from service_manifest.yaml in YAML form
 ```
 av_config:
   products:
-  - product: "Kasperksy"
+    - product: "Kasperksy"
 
-    # A list of strings that are found in the antivirus product's signatures that indicate that
-    # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of
-    # Assemblyline, rather than "Malicious".
-    heuristic_analysis_keys:
-      - "HEUR:"
+      # A list of strings that are found in the antivirus product's signatures that indicate that
+      # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of
+      # Assemblyline, rather than "Malicious".
+      heuristic_analysis_keys:
+        - "HEUR:"
 
-    # A list of hosts
-    hosts:
+      # A list of hosts
+      hosts:
 
-      # ICAP host
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        update_period: 240
-        file_size_limit: 30000000
-        scan_details:
-          scan_endpoint: "resp"
+        # ICAP host
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          update_period: 240
+          file_size_limit: 30000000
+          scan_details:
+            scan_endpoint: "resp"
 
-      # HTTP host
-      - ip: "<ip>"
-        port: 8000
-        method: "http"
-        update_period: 240
-        scan_details:
-          post_data_type: "json"
-          version_endpoint: "version"
-          scan_endpoint: "api/v3.1/scanmemory"
-          base64_encode: True
-          json_key_for_post: "object"
-          virus_name_header: "detectionName"
+        # HTTP host
+        - ip: "<ip>"
+          port: 8000
+          method: "http"
+          update_period: 240
+          scan_details:
+            post_data_type: "json"
+            version_endpoint: "version"
+            scan_endpoint: "api/v3.1/scanmemory"
+            base64_encode: True
+            json_key_for_post: "object"
+            virus_name_header: "detectionName"
 
-  - product: "McAfee"
-    heuristic_analysis_keys:
-      - "HEUR/"
-      - "BehavesLike."
-    hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        update_period: 240
-      - ip: "<ip>"
-        port: 9090
-        method: "http"
-        scan_details:
-          post_data_type: "data"
-          result_in_headers: True
-          virus_name_header: "X-Virus-Name"
-          scan_endpoint: "filescanner"
-        update_period: 240
+    - product: "McAfee"
+      heuristic_analysis_keys:
+        - "HEUR/"
+        - "BehavesLike."
+      hosts:
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          update_period: 240
+        - ip: "<ip>"
+          port: 9090
+          method: "http"
+          scan_details:
+            post_data_type: "data"
+            result_in_headers: True
+            virus_name_header: "X-Virus-Name"
+            scan_endpoint: "filescanner"
+          update_period: 240
 
-  - product: "ESET"
-    hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        scan_details:
-          no_version: true
-          virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
-        update_period: 240
+    - product: "ESET"
+      hosts:
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          scan_details:
+            no_version: true
+            virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
+          update_period: 240
 
-  - product: "Bitdefender"
-    heuristic_analysis_keys:
-      - "Gen:Heur"
-    hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        update_period: 240
+    - product: "Bitdefender"
+      heuristic_analysis_keys:
+        - "Gen:Heur"
+      hosts:
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          update_period: 240
 
-  - product: "F-Secure"
-    heuristic_analysis_keys:
-      - "Heuristic.HEUR/"
-    hosts:
-      - ip: "<ip>"
-        port: 1344
-        method: "icap"
-        scan_details:
-          virus_name_header: "X-FSecure-Infection-Name"
-          version_header: "X-FSecure-Versions:"
-        update_period: 240
+    - product: "F-Secure"
+      heuristic_analysis_keys:
+        - "Heuristic.HEUR/"
+      hosts:
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          scan_details:
+            virus_name_header: "X-FSecure-Infection-Name"
+            version_header: "X-FSecure-Versions:"
+          update_period: 240
+
+    - product: "Sophos"
+        hosts:
+          - ip: "<ip>"
+            port: 1344
+            method: "icap"
+            scan_details:
+              scan_endpoint: "sophos"
+              version_header: "X-EngineVersion: "
+            update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
