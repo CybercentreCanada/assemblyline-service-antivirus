@@ -218,7 +218,7 @@ class IcapHostClient(HostClient):
         av_hits = []
 
         result_lines = av_results.strip().splitlines()
-        if len(result_lines) <= 3 and "204" not in result_lines[0]:
+        if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
             if av_name not in av_errors:
                 av_errors.append(av_name)
             raise Exception(f'Invalid result from ICAP server: {safe_str(str(av_results))}')
@@ -627,7 +627,7 @@ class AntiVirus(ServiceBase):
                     # NO MERCY
                     if host.mercy_counter > self.mercy_limit:
                         self.log.warning(
-                            f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. Going to sleep for {self.sleep_time}s.")
+                            f"{host.group} host {host.ip}:{host.port} errored for the {host.mercy_counter}th time in a row. Going to sleep for {self.sleep_time}s.")
                         Thread(target=host.sleep, args=[self.sleep_time]).start()
 
                 # Reset the mercy counter on a successful run
@@ -641,6 +641,8 @@ class AntiVirus(ServiceBase):
             if not is_recoverable_runtime_error(e):
                 message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
                 self.log.error(message)
+            else:
+                raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in av_hit_result_sections[:]:
