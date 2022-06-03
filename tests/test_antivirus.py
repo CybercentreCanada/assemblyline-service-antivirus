@@ -474,6 +474,10 @@ class TestIcapHostClient:
         from antivirus import IcapHostClient
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
+        if not icap_result:
+            assert IcapHostClient.parse_scan_result(
+                    icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, []) == []
+
         if len(icap_result.splitlines()) == 1:
             with pytest.raises(Exception):
                 IcapHostClient.parse_scan_result(
