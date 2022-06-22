@@ -663,7 +663,6 @@ class TestAntiVirus:
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_thr_process_file")
         mocker.patch.object(AntiVirus, "_gather_results")
-        mocker.patch.object(AntiVirus, "attach_ontological_result")
 
         # Actually executing the sample
         antivirus_class_instance.execute(service_request)
@@ -849,23 +848,21 @@ class TestAntiVirus:
         no_result_section.set_item("errors_during_scanning", ["a", "b"])
         no_result_section.set_item("no_threat_detected", ["c", "d"])
         assert AntiVirus._preprocess_ontological_result(
-            [hit_1_sec, hit_2_sec, no_result_section]) == {
-            'detections':
-            [{
+            [hit_1_sec, hit_2_sec, no_result_section]) == [{
                 'engine_name': 'blah', 'engine_version': 'blah', 'engine_definition_version': None,
                 'category': 'malicious', 'virus_name': 'blah'},
-             {
+            {
                 'engine_name': 'blahblah', 'engine_version': ';:abc=', 'engine_definition_version': 'blah',
                 'category': 'suspicious', 'virus_name': 'bad'},
-             {
+            {
                 'engine_name': 'a', 'engine_version': None, 'engine_definition_version': None,
-                 'category': 'failure', 'virus_name': None},
-             {
+                'category': 'failure', 'virus_name': None},
+            {
                 'engine_name': 'b', 'engine_version': None, 'engine_definition_version': None,
-                 'category': 'failure', 'virus_name': None},
-             {
+                'category': 'failure', 'virus_name': None},
+            {
                 'engine_name': 'c', 'engine_version': None, 'engine_definition_version': None,
-                 'category': 'undetected', 'virus_name': None},
-             {
+                'category': 'undetected', 'virus_name': None},
+            {
                 'engine_name': 'd', 'engine_version': None, 'engine_definition_version': None,
-                 'category': 'undetected', 'virus_name': None}]}
+                'category': 'undetected', 'virus_name': None}]
