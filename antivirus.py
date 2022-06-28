@@ -243,7 +243,7 @@ class IcapHostClient(HostClient):
         virus_names: Set[str] = set()
         if "," in virus_name:
             virus_names = {vname.strip() for vname in virus_name.split(",")}
-        elif " " in virus_name:
+        elif " " in virus_name and " (" not in virus_name:
             virus_names = {vname.strip() for vname in virus_name.split(" ")}
         else:
             virus_names = {virus_name}
