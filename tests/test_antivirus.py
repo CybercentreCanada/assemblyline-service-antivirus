@@ -544,7 +544,11 @@ class TestIcapHostClient:
          ("blah\nX-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
           "blah identified the file as virus_heur (HTML)",
           {"av.virus_name": ["virus_heur (HTML)"]},
-          1, '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}'), ])
+          1, '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}'),
+         ("blah\nX-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
+          "blah identified the file as virus_heur/generic blah",
+          {"av.virus_name": ["virus_heur/generic blah"]},
+          1, '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}'), ])
     def test_icap_host_parse_scan_result(
             icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
         from antivirus import IcapHostClient
