@@ -833,6 +833,27 @@ class TestAntiVirus:
             sleep(3)
             assert av_host_icap.sleeping is False
 
+        # Default is that an error is thrown when we get a bad version response
+        with mocker.patch.object(IcapClient, "options_respmod", side_effect=Exception("blah")):
+            av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
+            assert av_host_icap.sleeping is False
+            antivirus_class_instance.sleep_time = 2
+            assert antivirus_class_instance._scan_file(
+                av_host_icap, "blah", b"blah") == (
+                ERROR_RESULT, None, av_host_icap)
+            assert av_host_icap.sleeping is True
+            sleep(3)
+            assert av_host_icap.sleeping is False
+
+        antivirus_class_instance.sleep_on_version_error = False
+        mocker.patch.object(IcapClient, "scan_data", return_value="blah")
+        with mocker.patch.object(IcapClient, "options_respmod", side_effect=Exception("blah")):
+            av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
+            assert antivirus_class_instance._scan_file(
+                av_host_icap, "blah", b"blah") == (
+                'blah', None, av_host_icap)
+            assert av_host_icap.sleeping is False
+
     @staticmethod
     def test_gather_results(dummy_result_class_instance):
         from antivirus import AntiVirus, AntiVirusHost, AvHitSection
