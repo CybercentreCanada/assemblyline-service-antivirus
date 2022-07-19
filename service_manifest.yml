@@ -49,6 +49,7 @@ config:
   connection_timeout: 10  # in seconds
   number_of_retries: 3
   mercy_limit: 5
+  sleep_on_version_error: true
 
 heuristics:
   - heur_id: 1
