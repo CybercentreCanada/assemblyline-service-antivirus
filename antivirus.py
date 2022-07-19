@@ -545,6 +545,7 @@ class AntiVirus(ServiceBase):
         self.connection_timeout: int = 0
         self.number_of_retries: int = 0
         self.mercy_limit: int = 0
+        self.sleep_on_version_error: bool = True
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
@@ -564,6 +565,7 @@ class AntiVirus(ServiceBase):
         self.connection_timeout = self.config.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
         self.number_of_retries = self.config.get("number_of_retries", DEFAULT_NUMBER_OF_RETRIES)
         self.mercy_limit = self.config.get("mercy_limit", DEFAULT_MERCY_LIMIT)
+        self.sleep_on_version_error = self.config.get("sleep_on_version_error", True)
         if len(products) < 1:
             raise ValueError("There does not appear to be any products loaded in the 'products' config "
                              "variable in the service configurations.")
@@ -755,16 +757,28 @@ class AntiVirus(ServiceBase):
         """
         results: Optional[str] = None
         version: Optional[str] = None
+
+        self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")
         try:
-            self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")
-            version = host.host_client.get_version()
+            if not self.sleep_on_version_error:
+                try:
+                    version = host.host_client.get_version()
+                except Exception as e:
+                    # If we are unable to grab the version of the engine,
+                    # this is not reason enough to stop scanning for malware
+                    self.log.info(f"Unable to get the engine version due to '{e}'")
+                    version = None
+            else:
+                version = host.host_client.get_version()
+
             results = host.host_client.scan_data(file_contents, file_hash)
         except Exception as e:
             self.log.warning(
-                f"{host.group} host {host.ip}:{host.port} errored due to {safe_str(e)}. "
+                f"{host.group} host {host.ip}:{host.port} errored due to '{safe_str(e)}'. "
                 f"Going to sleep for {self.sleep_time}s.")
             Thread(target=host.sleep, args=[self.sleep_time], daemon=True).start()
             results = ERROR_RESULT
+
         return results, version, host
 
     @staticmethod

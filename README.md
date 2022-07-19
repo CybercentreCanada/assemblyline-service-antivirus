@@ -29,7 +29,7 @@ If you are a vendor and would like to see your product added below please reach 
 * **connection_timeout**: The timeout for creating an ICAP connection
 * **number_of_retries**: The number of attempts to create an ICAP connection
 * **mercy_limit**: The number of files that are allowed to not be completed in time by an engine before the engine is put to sleep
-* **check_completion_interval**: The wait time in milliseconds between checking if threads have completed
+* **sleep_on_version_error**: Put engine to sleep if an error is raised from querying the version of the engine.
 
 ## How to add an antivirus product?
 ### Things you need:
