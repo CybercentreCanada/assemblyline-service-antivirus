@@ -52,6 +52,7 @@ av_config:
       # Assemblyline, rather than "Malicious".
       heuristic_analysis_keys:
         - "HEUR:"
+        - "not-a-virus"
 
       # A list of hosts
       hosts:
