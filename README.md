@@ -130,14 +130,14 @@ av_config:
           update_period: 240
 
     - product: "Sophos"
-        hosts:
-          - ip: "<ip>"
-            port: 1344
-            method: "icap"
-            scan_details:
-              scan_endpoint: "sophos"
-              version_header: "X-EngineVersion: "
-            update_period: 240
+      hosts:
+        - ip: "<ip>"
+          port: 1344
+          method: "icap"
+          scan_details:
+            scan_endpoint: "sophos"
+            version_header: "X-EngineVersion: "
+          update_period: 240
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
