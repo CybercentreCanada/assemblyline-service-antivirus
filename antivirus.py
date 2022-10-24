@@ -221,7 +221,7 @@ class IcapHostClient(HostClient):
         if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
             if av_name not in av_errors:
                 av_errors.append(av_name)
-            raise Exception(f'Invalid result from ICAP server: {safe_str(str(av_results))}')
+            raise Exception(f'Invalid result from {av_name} ICAP server: {safe_str(str(av_results))}')
 
         for line in result_lines:
             if line.startswith(virus_name_header):
