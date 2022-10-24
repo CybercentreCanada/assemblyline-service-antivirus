@@ -138,6 +138,7 @@ av_config:
             scan_endpoint: "sophos"
             version_header: "X-EngineVersion: "
           update_period: 240
+          file_size_limit: 29000000
 ```
 
 ### Explanations of ICAP and HTTP YAML details:
