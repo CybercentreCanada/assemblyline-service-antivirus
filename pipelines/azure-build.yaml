@@ -67,8 +67,8 @@ stages:
 
               for IMAGE in "cccs/" "uchimera.azurecr.io/cccs/"
               do
-                docker tag ${IMAGE}/${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$TAG
-                docker tag ${IMAGE}/${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE
+                docker tag ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$TAG
+                docker tag ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE ${IMAGE}${BUILD_REPOSITORY_NAME##*/}:$BUILD_TYPE
                 docker push ${IMAGE}${BUILD_REPOSITORY_NAME##*/} --all-tags
               done
             displayName: Deploy to container repositories
