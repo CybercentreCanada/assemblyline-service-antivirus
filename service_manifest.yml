@@ -3,7 +3,7 @@ version: $SERVICE_TAG
 description: This service facilitates the dispatching and result-parsing to multiple antivirus products.
 
 accepts: .*
-rejects: empty|metadata/.*
+rejects: empty|metadata/iccprofile
 
 stage: CORE
 category: Antivirus
