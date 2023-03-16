@@ -554,18 +554,19 @@ class TestIcapHostClient:
         from antivirus import IcapHostClient
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
+        client = IcapHostClient({}, "127.0.0.1", 123)
         if not icap_result:
-            assert IcapHostClient.parse_scan_result(
+            assert client.parse_scan_result(
                     icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, []) == []
 
         if len(icap_result.splitlines()) == 1:
             with pytest.raises(Exception):
-                IcapHostClient.parse_scan_result(
+                client.parse_scan_result(
                     icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, [])
             return
 
         if not expected_section_title:
-            assert IcapHostClient.parse_scan_result(
+            assert client.parse_scan_result(
                 icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
@@ -575,7 +576,7 @@ class TestIcapHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_sections = IcapHostClient.parse_scan_result(
+            test_result_sections = client.parse_scan_result(
                 icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
@@ -653,8 +654,9 @@ class TestHttpHostClient:
         from antivirus import HttpHostClient
         from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
+        client = HttpHostClient({}, "127.0.0.1", 123)
         if not expected_section_title:
-            assert HttpHostClient.parse_scan_result(
+            assert client.parse_scan_result(
                 http_result, av_name, "detectionName", [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
@@ -664,7 +666,7 @@ class TestHttpHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_section = HttpHostClient.parse_scan_result(
+            test_result_section = client.parse_scan_result(
                 http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 

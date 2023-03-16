@@ -145,10 +145,13 @@ class HostClient(ABC):
         """
         raise NotImplementedError
 
-    @staticmethod
     @abstractmethod
     def parse_scan_result(
-            av_results: str, av_name: str, virus_name_header: str, heuristic_analysis_keys: List[str],
+            self,
+            av_results: str,
+            av_name: str,
+            virus_name_header: str,
+            heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
@@ -206,9 +209,12 @@ class IcapHostClient(HostClient):
                 break
         return version
 
-    @staticmethod
     def parse_scan_result(
-            av_results: str, av_name: str, virus_name_header: str, heuristic_analysis_keys: List[str],
+            self,
+            av_results: str,
+            av_name: str,
+            virus_name_header: str,
+            heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
@@ -221,7 +227,10 @@ class IcapHostClient(HostClient):
         if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
             if av_name not in av_errors:
                 av_errors.append(av_name)
-            raise Exception(f'Invalid result from {av_name} ICAP server: {safe_str(str(av_results))}')
+            raise Exception(
+                f'Invalid result from {av_name} ICAP '
+                f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
+            )
 
         for line in result_lines:
             if line.startswith(virus_name_header):
@@ -324,9 +333,12 @@ class HttpHostClient(HostClient):
         else:
             return None
 
-    @staticmethod
     def parse_scan_result(
-            av_results: str, av_name: str, virus_name_header: str, heuristic_analysis_keys: List[str],
+            self,
+            av_results: str,
+            av_name: str,
+            virus_name_header: str,
+            heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
