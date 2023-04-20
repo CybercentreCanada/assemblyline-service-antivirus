@@ -9,13 +9,13 @@ If you are a vendor and would like to see your product added below please reach 
 ## What antivirus products have been tested?
 - Kaspersky Scan Engine v2.0.0.1157 Linux x64, in ICAP mode and HTTP mode
   - https://www.kaspersky.com/scan-engine
-- McAfee Web Gateway with ICAP and HTTP turned on: McAfee Web Gateway 9.2.2 build 33635
+- Skyhigh Secure (formerly McAfee) Web Gateway with ICAP and HTTP turned on: Skyhigh Secure Web Gateway 9.2.2 build 33635
   - https://docs.mcafee.com/bundle/web-gateway-9.2.x-product-guide
 - ESET File Security For Linux x64 v8.0.375.0, with "Remote scanning - ICAP" enabled
   - https://help.eset.com/efs/8/en-US/
 - Bitdefender Security Server v6.2.4.11063, with ICAP scanning enabled
   - https://www.bitdefender.com/business/support/en/77212-96386-security-server.html
-- F-Secure Atlant v2.0.230, in ICAP mode
+- WithSecure (formerly F-Secure) Atlant v2.0.230, in ICAP mode
   - https://help.f-secure.com/product.html#business/atlant/latest/en/concept_94067ECBA705473F9BC72F4282C2338D-latest-en
 - Sophos Anti-Virus Dynamic Interface with Engine v3.85.1, in ICAP mode
   - https://www.sophos.com/en-us/medialibrary/PDFs/documentation/SAVDI-User-Manual.pdf
@@ -35,7 +35,7 @@ If you are a vendor and would like to see your product added below please reach 
 ### Things you need:
 - The antivirus product must be setup and ready to accept files (via HTTP or ICAP). You are in charge of setting up the
   antivirus product, yay responsibility!
-- `product`: A unique name for each antivirus product (Kaspersky, McAfee, ESET, etc.)
+- `product`: A unique name for each antivirus product (Kaspersky, Skyhigh, ESET, WithSecure, Sophos, Bitdefender, etc.)
 - `ip` & `port`: The IP address and port of at least one host that is serving each antivirus product.
 - `update_period`: The period/interval (in minutes) in which the antivirus product host polls for updates.
 - [OPTIONAL] `file_size_limit`: The limit of the file size, in bytes, that the host can process within the service timeout
@@ -79,7 +79,7 @@ av_config:
             json_key_for_post: "object"
             virus_name_header: "detectionName"
 
-    - product: "McAfee"
+    - product: "Skyhigh"
       heuristic_analysis_keys:
         - "HEUR/"
         - "BehavesLike."
@@ -117,7 +117,7 @@ av_config:
           method: "icap"
           update_period: 240
 
-    - product: "F-Secure"
+    - product: "WithSecure"
       heuristic_analysis_keys:
         - "Heuristic.HEUR/"
       hosts:
