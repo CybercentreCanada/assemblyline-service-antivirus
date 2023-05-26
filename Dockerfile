@@ -6,6 +6,10 @@ ENV SERVICE_PATH antivirus.AntiVirus
 # Switch to assemblyline user
 USER assemblyline
 
+# Install python dependencies
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir --user --requirement requirements.txt && rm -rf ~/.cache/pip
+
 # Copy service code
 WORKDIR /opt/al_service
 COPY . .

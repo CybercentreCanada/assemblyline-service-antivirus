@@ -1,25 +1,25 @@
+import json
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
 from copy import deepcopy
-import json
 from math import floor
 from os.path import getsize
 from random import choice
-from requests import Session
-from time import sleep, time
 from threading import Thread
-from typing import Optional, Dict, List, Any, Set, Union
+from time import sleep, time
+from typing import Any, Dict, List, Optional, Set, Union
 
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results.antivirus import Antivirus
+from assemblyline_service_utilities.common.icap import IcapClient
 from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
-from assemblyline_v4_service.common.icap import IcapClient
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
+from requests import Session
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
