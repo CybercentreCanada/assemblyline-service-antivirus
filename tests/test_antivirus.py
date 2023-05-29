@@ -1,7 +1,33 @@
-import os
 import json
-import pytest
+import os
 import shutil
+from json import dumps
+from math import floor
+from socket import timeout
+from threading import Thread
+from time import sleep, time
+
+import pytest
+from antivirus import (
+    ERROR_RESULT,
+    AntiVirus,
+    AntiVirusHost,
+    AvHitSection,
+    HttpHostClient,
+    HttpScanDetails,
+    IcapClient,
+    IcapHostClient,
+    IcapScanDetails,
+    Session,
+)
+from assemblyline.common.isotime import epoch_to_local
+from assemblyline.odm.messages.task import Task as ServiceTask
+from assemblyline_service_utilities.common.icap import IcapClient
+from assemblyline_v4_service.common.request import ServiceRequest
+from assemblyline_v4_service.common.result import BODY_FORMAT, ResultKeyValueSection, ResultSection
+from assemblyline_v4_service.common.task import Task
+from requests import Session
+from requests.sessions import Session
 
 # Getting absolute paths, names and regexes
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -166,7 +192,6 @@ def remove_tmp_manifest():
 def antivirushost_class():
     create_tmp_manifest()
     try:
-        from antivirus import AntiVirusHost
         yield AntiVirusHost
     finally:
         remove_tmp_manifest()
@@ -176,7 +201,6 @@ def antivirushost_class():
 def antivirus_class_instance(mocker, dummy_api_interface):
     create_tmp_manifest()
     try:
-        from antivirus import AntiVirus
         mocker.patch.object(AntiVirus, "get_api_interface", return_value=dummy_api_interface)
         yield AntiVirus()
     finally:
@@ -188,8 +212,6 @@ def dummy_result_class_instance():
     create_tmp_manifest()
     try:
         class DummyResult(object):
-            from assemblyline_v4_service.common.result import ResultSection
-
             def __init__(self):
                 self.sections = []
 
@@ -225,9 +247,6 @@ def dummy_api_interface():
 class TestAntiVirusHost:
     @staticmethod
     def test_antivirus_host_init(antivirushost_class):
-        from requests import Session
-        from antivirus import HttpScanDetails, IcapScanDetails
-        from assemblyline_v4_service.common.icap import IcapClient
         with pytest.raises(ValueError):
             antivirushost_class("blah", "blah", 8008, "blah", 100)
 
@@ -305,7 +324,6 @@ class TestAntiVirusHost:
 
     @staticmethod
     def test_eq():
-        from antivirus import AntiVirusHost
         av_host1 = AntiVirusHost("blah", "blah", 1, "http", 1)
         av_host2 = AntiVirusHost("blah", "blah", 1, "http", 1)
         av_host3 = AntiVirusHost("blah", "blah", 2, "http", 1)
@@ -314,8 +332,6 @@ class TestAntiVirusHost:
 
     @staticmethod
     def test_sleep(antivirushost_class):
-        from time import sleep
-        from threading import Thread
         av_host = antivirushost_class("blah", "blah", 8008, "http", 100)
         assert av_host.sleeping is False
         Thread(target=av_host.sleep, args=[2]).start()
@@ -327,7 +343,6 @@ class TestAntiVirusHost:
 class TestIcapScanDetails:
     @staticmethod
     def test_icap_scan_details_init():
-        from antivirus import IcapScanDetails
         no_details = IcapScanDetails()
         assert no_details.virus_name_header == "X-Virus-ID"
         assert no_details.scan_endpoint == ""
@@ -342,7 +357,6 @@ class TestIcapScanDetails:
 
     @staticmethod
     def test_eq():
-        from antivirus import IcapScanDetails
         icap1 = IcapScanDetails()
         icap2 = IcapScanDetails()
         icap3 = IcapScanDetails("blah", "blah", True, "blah")
@@ -353,7 +367,6 @@ class TestIcapScanDetails:
 class TestHttpScanDetails:
     @staticmethod
     def test_http_scan_details_init():
-        from antivirus import HttpScanDetails
         no_details = HttpScanDetails()
         assert no_details.virus_name_header == "X-Virus-ID"
         assert no_details.post_data_type == "data"
@@ -377,7 +390,6 @@ class TestHttpScanDetails:
 
     @staticmethod
     def test_eq():
-        from antivirus import HttpScanDetails
         http1 = HttpScanDetails()
         http2 = HttpScanDetails()
         http3 = HttpScanDetails("json")
@@ -396,9 +408,6 @@ class TestAvHitSection:
 
     @staticmethod
     def test_av_hit_section_init():
-        from json import dumps
-        from assemblyline_v4_service.common.result import BODY_FORMAT, ResultSection
-        from antivirus import AvHitSection
         av_name = "blah"
         av_version = "blah"
         virus_name = "blah"
@@ -479,14 +488,12 @@ class TestAvHitSection:
 class TestIcapHostClient:
     @staticmethod
     def test_icap_host_client_init():
-        from antivirus import IcapHostClient, IcapScanDetails, IcapClient
         ihc = IcapHostClient({}, "", 0)
         assert isinstance(ihc.scan_details, IcapScanDetails)
         assert isinstance(ihc.client, IcapClient)
 
     @staticmethod
     def test_icap_host_client_get_version(mocker):
-        from antivirus import IcapHostClient, IcapClient
         ihc = IcapHostClient({}, "", 0)
         mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
         assert ihc.get_version() == "blah"
@@ -495,7 +502,6 @@ class TestIcapHostClient:
 
     @staticmethod
     def test_icap_host_client_scan_data(mocker):
-        from antivirus import IcapHostClient, IcapClient
         ihc = IcapHostClient({}, "", 0)
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         assert ihc.scan_data(b"", "") == "blah"
@@ -512,7 +518,6 @@ class TestIcapHostClient:
         ]
     )
     def test_icap_host_client_parse_version(version_result, version_header, correct_result):
-        from antivirus import IcapHostClient
         assert IcapHostClient.parse_version(version_result, version_header) == correct_result
 
     @staticmethod
@@ -551,8 +556,6 @@ class TestIcapHostClient:
           1, '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}'), ])
     def test_icap_host_parse_scan_result(
             icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
-        from antivirus import IcapHostClient
-        from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
         client = IcapHostClient({}, "127.0.0.1", 123)
         if not icap_result:
@@ -582,13 +585,11 @@ class TestIcapHostClient:
 
     @staticmethod
     def test_close():
-        from antivirus import IcapHostClient
         ihc = IcapHostClient({}, "", 0)
         assert ihc.close() is None
 
     @staticmethod
     def test_set_timeout():
-        from antivirus import IcapHostClient
         ihc = IcapHostClient({}, "", 0)
         ihc.set_timeout(0)
         assert ihc.client.timeout != 0
@@ -599,7 +600,6 @@ class TestIcapHostClient:
 class TestHttpHostClient:
     @staticmethod
     def test_http_host_client_init():
-        from antivirus import HttpHostClient, HttpScanDetails, Session
         hhc = HttpHostClient({}, "1.1.1.1", 80)
         assert isinstance(hhc.scan_details, HttpScanDetails)
         assert isinstance(hhc.client, Session)
@@ -607,7 +607,6 @@ class TestHttpHostClient:
 
     @staticmethod
     def test_http_host_client_get_version(dummy_requests_class_instance, mocker):
-        from antivirus import HttpHostClient, Session
         hhc = HttpHostClient({"version_endpoint": "blah"}, "", 0)
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         assert hhc.get_version() == "blah"
@@ -616,7 +615,6 @@ class TestHttpHostClient:
 
     @staticmethod
     def test_http_host_client_scan_data(dummy_requests_class_instance, mocker):
-        from antivirus import HttpHostClient, Session
         hhc = HttpHostClient({}, "", 0)
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
@@ -631,7 +629,6 @@ class TestHttpHostClient:
         ]
     )
     def test_http_host_client_parse_version(version_result, correct_result):
-        from antivirus import HttpHostClient
         assert HttpHostClient.parse_version(version_result) == correct_result
 
     @staticmethod
@@ -651,8 +648,6 @@ class TestHttpHostClient:
     )
     def test_http_host_client_parse_scan_result(
             http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
-        from antivirus import HttpHostClient
-        from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         av_name = "blah"
         client = HttpHostClient({}, "127.0.0.1", 123)
         if not expected_section_title:
@@ -698,7 +693,6 @@ class TestAntiVirus:
 
     @staticmethod
     def test_start(antivirus_class_instance):
-        from antivirus import AntiVirusHost
         products = [{"product": "blah", "hosts": [{"ip": "blah", "port": 1, "method": "icap", "update_period": 1}]}]
         antivirus_class_instance.config["av_config"]["products"] = products
         correct_hosts = [
@@ -729,11 +723,6 @@ class TestAntiVirus:
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
     def test_execute(sample, antivirus_class_instance, mocker):
-        from assemblyline_v4_service.common.task import Task
-        from assemblyline.odm.messages.task import Task as ServiceTask
-        from assemblyline_v4_service.common.request import ServiceRequest
-        from antivirus import AntiVirus
-
         antivirus_class_instance.start()
 
         service_task = ServiceTask(sample)
@@ -761,7 +750,6 @@ class TestAntiVirus:
 
     @staticmethod
     def test_get_hosts():
-        from antivirus import AntiVirus, AntiVirusHost
         products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "scan_details": {
             "virus_name_header": "blah", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
         correct_hosts = [
@@ -782,7 +770,7 @@ class TestAntiVirus:
 
     @staticmethod
     def test_thr_process_file(antivirus_class_instance, mocker):
-        from antivirus import AntiVirus, AntiVirusHost, IcapHostClient, av_hit_result_sections
+        from antivirus import av_hit_result_sections
         avhost = AntiVirusHost("blah", "blah", 1, "icap", 1)
         mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value=None)
@@ -798,11 +786,6 @@ class TestAntiVirus:
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
-        from socket import timeout
-        from time import sleep
-        from requests.sessions import Session
-        from assemblyline_v4_service.common.icap import IcapClient
-        from antivirus import ERROR_RESULT
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
@@ -858,8 +841,6 @@ class TestAntiVirus:
 
     @staticmethod
     def test_gather_results(dummy_result_class_instance):
-        from antivirus import AntiVirus, AntiVirusHost, AvHitSection
-        from assemblyline_v4_service.common.result import ResultSection, BODY_FORMAT
         hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", 1), AntiVirusHost("blah2", "blah", 1234, "icap", 1)]
         AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
@@ -883,13 +864,6 @@ class TestAntiVirus:
     @staticmethod
     @pytest.mark.parametrize("sample", samples)
     def test_determine_service_context(sample):
-        from assemblyline_v4_service.common.request import ServiceRequest
-        from assemblyline_v4_service.common.task import Task
-        from assemblyline.odm.messages.task import Task as ServiceTask
-        from assemblyline.common.isotime import epoch_to_local
-        from antivirus import AntiVirus, AntiVirusHost
-        from time import time
-        from math import floor
         service_task = ServiceTask(sample)
         task = Task(service_task)
         service_request = ServiceRequest(task)
@@ -906,7 +880,6 @@ class TestAntiVirus:
 
     @staticmethod
     def test_determine_hosts_to_use():
-        from antivirus import AntiVirus, AntiVirusHost
         different_group_av_host = AntiVirusHost("blah1", "blah", 1, "icap", 1)
         sleeping_av_host = AntiVirusHost("blah2", "blah", 1, "icap", 1)
         sleeping_av_host.sleeping = True
@@ -938,13 +911,10 @@ class TestAntiVirus:
         ]
     )
     def test_determine_scan_timeout_by_size(max_service_timeout, file_size, expected_result):
-        from antivirus import AntiVirus
         assert AntiVirus._determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result
 
     @staticmethod
     def test_preprocess_ontological_result():
-        from antivirus import AntiVirus, AvHitSection
-        from assemblyline_v4_service.common.result import ResultKeyValueSection
         hit_1_sec = AvHitSection("blah", "blah", "blah", {}, 1, {}, {}, [])
         hit_2_sec = AvHitSection("blahblah", ";:abc=", "bad", {"version": "blah", "def_time": 1}, 2, {}, {}, [])
         no_result_section = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
