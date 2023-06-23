@@ -156,3 +156,97 @@ av_config:
 - `result_in_headers`: A boolean indicating if the antivirus signature will be found in the response headers.
 - `base64_encode`: A boolean indicating if the file contents should be base64 encoded prior to being POSTed to the antivirus product server.
 - `version_endpoint`: The URI endpoint at which the service is listening for a GET for the antivirus product service version.
+
+### An antivirus signature is raising too many false-positives, how can I remedy this from the Assemblyline side?
+
+The solution here is that we still want to see if a signature is being raised for a submission for tracking purposes but we want to avoid false-positive verdicts/scores, so what we want to do is just revise the score that the signature receives by the AntiVirus service.
+
+__N.B.:__ This process is available to system administrators only.
+
+Revising a signature score in the user interface is done in a few easy steps...
+
+**Step 1**: Head to the "Detailed View" of a submission that is raising the signature that you want to revise the score of. If the URL you have reached  follows `https://<IP or domain of Assemblyline instance>/submission/report/<sid>` then you have "Report View" as your default submission viewer. If this is the case, head to the "Detailed View" by clicking the far-right icon at the top of the page:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/show_detailed_view.png?raw=true)
+
+If you are already on the "Detailed View" page, the URL you have reached should follow `https://<IP or domain of Assemblyline instance>/submission/detail/<sid>`.
+
+The goal of **Step 1** is reach the "Detailed View" page for a submission containing the raised signature that is causing false-positives.
+
+**Step 2**: Scroll down the page until you see the **Heuristic** section where that signature exists for the submission:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/heuristic_section.png?raw=true)
+
+Open the **AntiVirus** heuristic drawer to view the heuristic details. The heuristic will either be named "File is infected (ANTIVIRUS.1)" or "File is suspicious (ANTIVIRUS.2)". As seen in the image above, this example features a heuristic drawer for "File is infected (ANTIVIRUS.1)". When the drawer is expanded, it looks like this:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/open_heuristic_drawer.png?raw=true)
+
+__N.B.:__ This is just an example and we are arbitrarily choosing a signature to revise the score of for documentation purposes. This signature is actually very good and should not have the score revised.
+
+Show the signature for that heuristic by clicking on the heuristic icon in that result section:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/heuristic_icon.png?raw=true)
+
+Now you can see the heuristic and the signature that caused that heuristic to be raised:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/revealed_heuristic_and_signature.png?raw=true)
+
+Right-click on the signature to view the "Right-click" menu and select the "Copy to Clipboard" option:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/right_click_menu.png?raw=true)
+
+When copied, you will see a green popup:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/signature_copied.png?raw=true)
+
+The goal of **Step 2** is to copy the signature name value as seen in the AntiVirus service to the clipboard, since this is what the AntiVirus service will use for revising the score.
+
+**Step 3**: In the side bar, head to "Administration" -> "Services":
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/signature_copied.png?raw=true)
+
+After doing so, your URL should look like this: `https://<IP or domain of Assemblyline instance>/admin/services`.
+
+Select the "AntiVirus" service on this page, then click on the "PARAMETERS" tab:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/antivirus_parameters.png?raw=true)
+
+Scroll to the **Service Variables** section and find the `av_config` value:
+
+__N.B.:__ If the `sig_score_revision_map` key is not present, just add it at the root level of the `av_config` dictionary by hovering over the JSON, and clicking the (+) that appears.
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/av_config.png?raw=true)
+
+Under the `sig_score_revision_map` key, hover over the key value and click the (+):
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/plus_key.png?raw=true)
+
+This popup will appear to add a new key:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/add_key_popup.png?raw=true)
+
+Paste the signature value to the key input box that was copied to your clipboard in **Step 2**. Click the blue checkmark that appears in the input box.
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/pasted_value_with_checkmark.png?raw=true)
+
+So now you should have something similar to this:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/set_score.png?raw=true)
+
+Click on the little "edit" icon to add a value for this key. Set the value to the desired score:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/pay_attention_to_which_checkmark.png?raw=true)
+
+To ensure the value is saved as an integer, click on the lower checkmark next to the red 0.
+
+You should have this now:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/score_set.png?raw=true)
+
+The last thing to do for this step is to save your changes by clicking the "SAVE CHANGES" button on the bottom of your page:
+
+![alt text](https://github.com/CybercentreCanada/assemblyline-service-antivirus/blob/main/readme_images/save_changes.png?raw=true)
+
+The goal of **Step 3** is to actually add the signature and revised score to the service parameters so that it takes effect immediately for new submissions.
+
+**Step 4**: Celebrate!
