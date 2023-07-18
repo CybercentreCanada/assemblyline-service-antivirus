@@ -36,7 +36,7 @@ CHARS_TO_STRIP = [";", ":", "=", '"']
 MIN_SCAN_TIMEOUT_IN_SECONDS = 30
 MIN_POST_SCAN_TIME_IN_SECONDS = 10
 MAX_FILE_SIZE_IN_MEGABYTES = 100
-ERROR_RESULT = "ERROR"
+ERROR_RESULT = b"ERROR"
 # If the AV product blocks the file but doesn't provide a Virus ID
 NO_AV_PROVIDED = "Unknown"
 # Generic ICAP response text indicating a virus was found
@@ -102,11 +102,10 @@ class AvHitSection(ResultKeyValueSection):
         # So that we can tag more items of interest
 
 
-BufferType = TypeVar("BufferType")
 DetailType = TypeVar("DetailType")
 
 
-class HostClient(ABC, Generic[DetailType, BufferType]):
+class HostClient(ABC, Generic[DetailType]):
     """
     An abstract class that specifies the required methods for a host client
     """
@@ -131,7 +130,7 @@ class HostClient(ABC, Generic[DetailType, BufferType]):
         raise NotImplementedError()
 
     @abstractmethod
-    def scan_data(self, file_handle: io.BufferedIOBase, file_hash: str) -> Optional[BufferType]:
+    def scan_data(self, file_handle: io.BufferedIOBase, file_hash: str) -> Optional[bytes]:
         """
         This method sends the file contents to the antivirus product for scanning
         :param file_handle: The contents of the file to be scanned
@@ -155,7 +154,7 @@ class HostClient(ABC, Generic[DetailType, BufferType]):
     @abstractmethod
     def parse_scan_result(
             self,
-            av_results: BufferType,
+            av_results: bytes,
             av_name: str,
             virus_name_header: str,
             heuristic_analysis_keys: List[str],
@@ -214,7 +213,7 @@ class IcapScanDetails:
             self.no_version == other.no_version and self.version_header == other.version_header
 
 
-class IcapHostClient(HostClient[IcapScanDetails, bytes]):
+class IcapHostClient(HostClient[IcapScanDetails]):
     def __init__(self, scan_details: Dict, ip: str, port: int) -> None:
         self.scan_details = IcapScanDetails(**scan_details)
         self.client = IcapClient(
@@ -264,6 +263,8 @@ class IcapHostClient(HostClient[IcapScanDetails, bytes]):
         global av_errors
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
+
+        raise NotImplementedError()
 
         result_lines = av_results.strip().splitlines()
         if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
@@ -383,7 +384,7 @@ class HttpScanDetails:
             self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
 
 
-class HttpHostClient(HostClient[HttpScanDetails, str]):
+class HttpHostClient(HostClient[HttpScanDetails]):
     def __init__(self, scan_details: Dict, ip: str, port: int) -> None:
         self.scan_details = HttpScanDetails(**scan_details)
         self.client = Session()
@@ -395,7 +396,7 @@ class HttpHostClient(HostClient[HttpScanDetails, str]):
         else:
             return None
 
-    def scan_data(self, file_handle: io.BufferedIOBase, _) -> Optional[str]:
+    def scan_data(self, file_handle: io.BufferedIOBase, _) -> Optional[bytes]:
         file_contents: bytes = file_handle.read()
         # Setting up the POST based on the user's configurations
         if self.scan_details.base64_encode:
@@ -418,9 +419,9 @@ class HttpHostClient(HostClient[HttpScanDetails, str]):
             resp = self.client.post(scan_url, json=json_to_post)
 
         if resp is not None and self.scan_details.result_in_headers:
-            return json.dumps(dict(resp.headers))
+            return json.dumps(dict(resp.headers)).encode()
         elif resp is not None and not self.scan_details.result_in_headers:
-            return resp.text
+            return resp.content
         else:
             return None
 
@@ -433,7 +434,7 @@ class HttpHostClient(HostClient[HttpScanDetails, str]):
 
     def parse_scan_result(
             self,
-            av_results: str,
+            av_results: bytes,
             av_name: str,
             virus_name_header: str,
             heuristic_analysis_keys: List[str],
@@ -773,7 +774,7 @@ class AntiVirus(ServiceBase):
             av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
-                   file_contents: io.BufferedIOBase) -> tuple[Optional[str], Optional[str], AntiVirusHost]:
+                   file_contents: io.BufferedIOBase) -> tuple[Optional[bytes], Optional[str], AntiVirusHost]:
         """
         This method scans the file and could get the product version using the host's client
         :param host: The class instance representing an antivirus product
@@ -782,7 +783,7 @@ class AntiVirus(ServiceBase):
         :return: The results from scanning the file, the results from querying the product version,
         the AntiVirusHost instance
         """
-        results: Optional[str] = None
+        results: Optional[bytes] = None
         version: Optional[str] = None
 
         self.log.info(f"Scanning {file_hash} on {host.group} host {host.ip}:{host.port}.")

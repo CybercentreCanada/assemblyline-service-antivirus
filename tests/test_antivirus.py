@@ -6,6 +6,7 @@ from math import floor
 from socket import timeout
 from threading import Thread
 from time import sleep, time
+from io import BytesIO
 
 import pytest
 from antivirus import (
@@ -226,8 +227,9 @@ def dummy_result_class_instance():
 @pytest.fixture
 def dummy_requests_class_instance():
     class DummyRequests(object):
-        def __init__(self, text):
+        def __init__(self, text: str):
             self.text = text
+            self.content = text.encode()
             self.headers = {"Via": "(blah)"}
     return DummyRequests
 
@@ -495,7 +497,7 @@ class TestIcapHostClient:
     @staticmethod
     def test_icap_host_client_get_version(mocker):
         ihc = IcapHostClient({}, "", 0)
-        mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
+        mocker.patch.object(IcapClient, "options_respmod", return_value=b"blah")
         assert ihc.get_version() == "blah"
         ihc.scan_details.no_version = True
         assert ihc.get_version() is None
@@ -503,8 +505,8 @@ class TestIcapHostClient:
     @staticmethod
     def test_icap_host_client_scan_data(mocker):
         ihc = IcapHostClient({}, "", 0)
-        mocker.patch.object(IcapClient, "scan_data", return_value="blah")
-        assert ihc.scan_data(b"", "") == "blah"
+        mocker.patch.object(IcapClient, "scan_data", return_value=b"blah")
+        assert ihc.scan_data(BytesIO(b""), "") == b"blah"
 
     @staticmethod
     @pytest.mark.parametrize(
@@ -523,34 +525,34 @@ class TestIcapHostClient:
     @staticmethod
     @pytest.mark.parametrize(
         "icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
-        [("", "", "", "", {},
+        [(b"", "", "", "", {},
           0, {}),
-         ("blah", "", "", "", {},
+         (b"blah", "", "", "", {},
           0, {}),
-         ("blah\nblah\nblah\nblah", "", "", "", {},
+         (b"blah\nblah\nblah\nblah", "", "", "", {},
           0, {}),
-         ("blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
+         (b"blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
           {"av.virus_name": ["virus_name"]},
           1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         ("blah\nVirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+         (b"blah\nVirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         ("blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+         (b"blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         ("blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
+         (b"blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
           "blah identified the file as virus_heur",
           {"av.virus_name": ["virus_heur"],
            "av.heuristic": ["virus_heur"]},
           2, '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
-         ("blah\nX-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
+         (b"blah\nX-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
           "blah identified the file as virus_heur (HTML)",
           {"av.virus_name": ["virus_heur (HTML)"]},
           1, '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}'),
-         ("blah\nX-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
+         (b"blah\nX-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
           "blah identified the file as virus_heur/generic blah",
           {"av.virus_name": ["virus_heur/generic blah"]},
           1, '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}'), ])
@@ -618,7 +620,7 @@ class TestHttpHostClient:
         hhc = HttpHostClient({}, "", 0)
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
-        assert hhc.scan_data(b"", "") == "blah"
+        assert hhc.scan_data(BytesIO(b""), "") == b"blah"
 
     @staticmethod
     @pytest.mark.parametrize(
@@ -786,26 +788,26 @@ class TestAntiVirus:
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
-        mocker.patch.object(IcapClient, "scan_data", return_value="blah")
-        mocker.patch.object(IcapClient, "options_respmod", return_value="blah")
+        mocker.patch.object(IcapClient, "scan_data", return_value=b"blah")
+        mocker.patch.object(IcapClient, "options_respmod", return_value=b"blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", "blah", av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (b"blah", "blah", av_host_icap)
 
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100, scan_details={"no_version": True})
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", None, av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (b"blah", None, av_host_icap)
 
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100)
-        assert antivirus_class_instance._scan_file(av_host_http, "blah", b"blah") == ("blah", None, av_host_http)
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", BytesIO(b"blah")) == (b"blah", None, av_host_http)
 
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100,
                                            scan_details={"base64_encode": True, "version_endpoint": "blah",
                                                          "post_data_type": "json",
                                                          "result_in_headers": True})
         assert antivirus_class_instance._scan_file(
-            av_host_http, "blah", b"blah") == (
-            '{"Via": "(blah)"}', "blah", av_host_http)
+            av_host_http, "blah", BytesIO(b"blah")) == (
+            b'{"Via": "(blah)"}', "blah", av_host_http)
 
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
