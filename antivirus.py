@@ -232,9 +232,9 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         self.virus_header_pattern = None
         self.virus_header_prefix = ''
 
-        if prefix.startswith('/') and prefix.endswith('/'):
+        if len(prefix) > 1 and prefix.startswith('/') and prefix.endswith('/'):
             self.virus_header_pattern = re.compile(prefix[1:-1])
-        elif prefix.startswith('i/') and prefix.endswith('/'):
+        elif len(prefix) > 2 and prefix.startswith('i/') and prefix.endswith('/'):
             self.virus_header_pattern = re.compile(prefix[2:-1], flags=re.IGNORECASE)
         elif prefix:
             self.virus_header_prefix = prefix.lstrip()
