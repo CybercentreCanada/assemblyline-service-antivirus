@@ -539,6 +539,7 @@ class TestIcapHostClient:
           {"av.virus_name": ["virus_name"]},
           1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
           '"infected", "av_version": "blah"}'),
+         # Rely on VirusFound string
          (ICAP_STATUS + b"VirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '

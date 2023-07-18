@@ -185,7 +185,8 @@ class IcapScanDetails:
     """
 
     def __init__(self, virus_name_header: str = "X-Virus-ID",
-                 scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None) -> None:
+                 scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None,
+                 check_body_for_headers: bool = False) -> None:
         """
         This method initializes the IcapScanDetails class
         :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
@@ -194,12 +195,14 @@ class IcapScanDetails:
         :param no_version: A boolean indicating if a product version will be returned if you query OPTIONS.
         :param version_header: The name of the header of the line in the version results that contains the antivirus
                                engine version.
+        :param check_body_for_headers: A boolean indicating if the ICAP response body could contain important headers
         :return: None
         """
         self.virus_name_header = virus_name_header
         self.scan_endpoint = scan_endpoint
         self.no_version = no_version
         self.version_header = version_header
+        self.check_body_for_headers = check_body_for_headers
 
     def __eq__(self, other):
         """
@@ -210,7 +213,8 @@ class IcapScanDetails:
         if not isinstance(other, IcapScanDetails):
             return NotImplemented
         return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint and \
-            self.no_version == other.no_version and self.version_header == other.version_header
+            self.no_version == other.no_version and self.version_header == other.version_header and \
+                self.check_body_for_headers == other.check_body_for_headers
 
 
 class IcapHostClient(HostClient[IcapScanDetails]):
@@ -279,7 +283,7 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
 
-        _status_code, _status_message, headers = self.client.parse_headers(av_results)
+        _status_code, _status_message, headers = self.client.parse_headers(av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
 
         # result_lines = av_results.strip().splitlines()
         # if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
@@ -308,6 +312,11 @@ class IcapHostClient(HostClient[IcapScanDetails]):
                 if VIRUS_FOUND.upper() in header or VIRUS_FOUND in value:
                     virus_name = NO_AV_PROVIDED
                     break
+
+        # In the case of when a response body has no headers, only a body containing the "VirusFound" string
+        if not virus_name and not headers:
+            if VIRUS_FOUND.upper() in av_results.upper().decode():
+                virus_name = NO_AV_PROVIDED
 
         if not virus_name:
             return av_hits

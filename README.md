@@ -96,6 +96,7 @@ av_config:
             result_in_headers: True
             virus_name_header: "X-Virus-Name"
             scan_endpoint: "filescanner"
+            check_body_for_headers: True
           update_period: 240
 
     - product: "ESET"
@@ -104,7 +105,7 @@ av_config:
           port: 1344
           method: "icap"
           scan_details:
-            no_version: true
+            no_version: True
             virus_name_header: "X-Infection-Found: Type=0; Resolution=0; Threat"
           update_period: 240
 
@@ -147,6 +148,7 @@ av_config:
 - `scan_endpoint`: The URI endpoint at which the service is listening for file contents to be submitted or OPTIONS to be queried.
 - `no_version`: A boolean indicating if a product version will be returned if you query OPTIONS.
 - `version_header`: The name of the header of the line in the version results that contains the antivirus engine version.
+- `check_body_for_headers`: A boolean indicating if the ICAP response body could contain important headers.
 
 #### HTTP
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.
