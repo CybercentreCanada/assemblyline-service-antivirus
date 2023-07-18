@@ -9,6 +9,7 @@ from random import choice
 from threading import Thread
 from time import sleep, time
 import io
+import re
 from typing import Any, Dict, List, Optional, Set, Generic, TypeVar
 
 from assemblyline.common.exceptions import RecoverableError
@@ -156,7 +157,6 @@ class HostClient(ABC, Generic[DetailType]):
             self,
             av_results: bytes,
             av_name: str,
-            virus_name_header: str,
             heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
@@ -223,6 +223,22 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             timeout=MIN_SCAN_TIMEOUT_IN_SECONDS
         )
 
+        # Parse the header configuration
+        name, _, prefix = self.scan_details.virus_name_header.partition(':')
+        self.virus_name_header = name.upper()
+
+        # Try to detect a regex header pattern
+        prefix = prefix.strip()
+        self.virus_header_pattern = None
+        self.virus_header_prefix = ''
+
+        if prefix.startswith('/') and prefix.endswith('/'):
+            self.virus_header_pattern = re.compile(prefix[1:-1])
+        elif prefix.startswith('i/') and prefix.endswith('/'):
+            self.virus_header_pattern = re.compile(prefix[2:-1], flags=re.IGNORECASE)
+        elif prefix:
+            self.virus_header_prefix = prefix.lstrip()
+
     def get_version(self) -> Optional[str]:
         if not self.scan_details.no_version:
             body = self.client.options_respmod()
@@ -254,7 +270,6 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             self,
             av_results: bytes,
             av_name: str,
-            virus_name_header: str,
             heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
@@ -264,25 +279,33 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
 
-        raise NotImplementedError()
+        _status_code, _status_message, headers = self.client.parse_headers(av_results)
 
-        result_lines = av_results.strip().splitlines()
-        if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
-            if av_name not in av_errors:
-                av_errors.append(av_name)
-            raise Exception(
-                f'Invalid result from {av_name} ICAP '
-                f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
-            )
+        # result_lines = av_results.strip().splitlines()
+        # if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
+        #     if av_name not in av_errors:
+        #         av_errors.append(av_name)
+        #     raise Exception(
+        #         f'Invalid result from {av_name} ICAP '
+        #         f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
+        #     )
 
-        for line in result_lines:
-            if line.startswith(virus_name_header):
-                virus_name = line[len(virus_name_header) + 1:].strip()
-                break
+        if self.virus_header_pattern is not None:
+            for header, value in headers.items():
+                if header == self.virus_name_header:
+                    match = self.virus_header_pattern.fullmatch(value)
+                    if match:
+                        virus_name = ','.join(match.groups())
+                        break
+        else:
+            for header, value in headers.items():
+                if header == self.virus_name_header and value.startswith(self.virus_header_prefix):
+                    virus_name = value.removeprefix(self.virus_header_prefix).strip()
+                    break
 
         if not virus_name:
-            for line in result_lines:
-                if VIRUS_FOUND in line:
+            for header, value in headers.items():
+                if VIRUS_FOUND.upper() in header or VIRUS_FOUND in value:
                     virus_name = NO_AV_PROVIDED
                     break
 
@@ -436,7 +459,6 @@ class HttpHostClient(HostClient[HttpScanDetails]):
             self,
             av_results: bytes,
             av_name: str,
-            virus_name_header: str,
             heuristic_analysis_keys: List[str],
             av_version: Optional[str],
             sig_score_revision_map: Dict[str, int],
@@ -444,6 +466,7 @@ class HttpHostClient(HostClient[HttpScanDetails]):
             safelist_match: List[str]) -> List[AvHitSection]:
         http_results_as_json = json.loads(av_results)
         av_hits = []
+        virus_name_header = self.scan_details.virus_name_header
         product_name = av_name
         if http_results_as_json.get(virus_name_header):
             virus_name = http_results_as_json[virus_name_header]
@@ -754,7 +777,6 @@ class AntiVirus(ServiceBase):
             av_hits = host.host_client.parse_scan_result(
                 av_results=result,
                 av_name=host.group,
-                virus_name_header=host.host_client.scan_details.virus_name_header,
                 heuristic_analysis_keys=host.heuristic_analysis_keys,
                 av_version=av_version,
                 sig_score_revision_map=self.sig_score_revision_map,

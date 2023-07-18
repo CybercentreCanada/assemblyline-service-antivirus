@@ -487,6 +487,9 @@ class TestAvHitSection:
         assert check_section_equality(actual_res_sec, correct_result_section)
 
 
+ICAP_STATUS = b'ICAP/1.0 200 Ok\r\n'
+
+
 class TestIcapHostClient:
     @staticmethod
     def test_icap_host_client_init():
@@ -525,54 +528,52 @@ class TestIcapHostClient:
     @staticmethod
     @pytest.mark.parametrize(
         "icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
-        [(b"", "", "", "", {},
+        # Empty header
+        [(ICAP_STATUS + b"\n", "", "", "", {},
           0, {}),
-         (b"blah", "", "", "", {},
+         # Series of nonsense headers
+         (ICAP_STATUS + b"blah\nblah\nblah\nblah", "", "", "", {},
           0, {}),
-         (b"blah\nblah\nblah\nblah", "", "", "", {},
-          0, {}),
-         (b"blah\nX-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
+         # Simple header with virus name
+         (ICAP_STATUS + b"X-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
           {"av.virus_name": ["virus_name"]},
           1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         (b"blah\nVirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+         (ICAP_STATUS + b"VirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         (b"blah\nX-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
+         (ICAP_STATUS + b"X-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
           {"av.virus_name": ["Unknown"]},
           1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
           '"infected", "av_version": "blah"}'),
-         (b"blah\nX-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
+         (ICAP_STATUS + b"X-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
           "blah identified the file as virus_heur",
           {"av.virus_name": ["virus_heur"],
            "av.heuristic": ["virus_heur"]},
           2, '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
-         (b"blah\nX-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
+         (ICAP_STATUS + b"X-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
           "blah identified the file as virus_heur (HTML)",
           {"av.virus_name": ["virus_heur (HTML)"]},
           1, '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}'),
-         (b"blah\nX-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
+         (ICAP_STATUS + b"X-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
           "blah identified the file as virus_heur/generic blah",
           {"av.virus_name": ["virus_heur/generic blah"]},
           1, '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}'), ])
     def test_icap_host_parse_scan_result(
             icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
         av_name = "blah"
-        client = IcapHostClient({}, "127.0.0.1", 123)
+        client = IcapHostClient({"virus_name_header": "X-Virus-ID"}, "127.0.0.1", 123)
         if not icap_result:
-            assert client.parse_scan_result(
-                    icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, []) == []
+            assert client.parse_scan_result(icap_result, av_name, [], version,  {}, {}, []) == []
 
         if len(icap_result.splitlines()) == 1:
             with pytest.raises(Exception):
-                client.parse_scan_result(
-                    icap_result, av_name, "X-Virus-ID:", [], version,  {}, {}, [])
+                client.parse_scan_result(icap_result, av_name, [], version,  {}, {}, [])
             return
 
         if not expected_section_title:
-            assert client.parse_scan_result(
-                icap_result, av_name, "X-Virus-ID:", [], version, {}, {}, []) == []
+            assert client.parse_scan_result(icap_result, av_name, [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             if expected_heuristic:
@@ -582,7 +583,7 @@ class TestIcapHostClient:
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
             test_result_sections = client.parse_scan_result(
-                icap_result, av_name, "X-Virus-ID", ["HEUR:"], version, {}, {}, [])
+                icap_result, av_name, ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
@@ -651,10 +652,10 @@ class TestHttpHostClient:
     def test_http_host_client_parse_scan_result(
             http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
         av_name = "blah"
-        client = HttpHostClient({}, "127.0.0.1", 123)
+        client = HttpHostClient({"virus_name_header": "detectionName"}, "127.0.0.1", 123)
         if not expected_section_title:
             assert client.parse_scan_result(
-                http_result, av_name, "detectionName", [], version, {}, {}, []) == []
+                http_result, av_name, [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             if expected_heuristic:
@@ -664,7 +665,7 @@ class TestHttpHostClient:
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
             test_result_section = client.parse_scan_result(
-                http_result, av_name, "detectionName", ["HEUR:"], version, {}, {}, [])
+                http_result, av_name, ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
 
@@ -941,3 +942,80 @@ class TestAntiVirus:
             {
                 'engine_name': 'd', 'engine_version': None, 'engine_definition_version': None,
                 'category': 'undetected', 'virus_name': None}]
+
+
+null_prefix_sample = b"""ICAP/1.0 200 Ok
+X-FSecure-Infection-Name: BadThing/Oh.Boy
+"""
+
+
+def test_icap_null_prefixed_header():
+    """Test what happens if you include : at the end of the header name"""
+    # Without the extra :
+    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name"}, ip='', port=10000)
+    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+
+    # With the extra :
+    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name:"}, ip='', port=10000)
+    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+
+    # Try some wrong caps too because header names should be case insensitive
+    host = IcapHostClient({"virus_name_header": "X-fsecure-infection-name:"}, ip='', port=10000)
+    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+
+
+prefix_sample_a = b"""ICAP/1.0 200 Ok
+X-Infection-Found: Type=0; Resolution=0; Threat BigBad/Wolf
+"""
+
+prefix_sample_b = b"""ICAP/1.0 200 Ok
+X-Infection-Found: Type=0; Resolution=2; Threat BigBad/Wolf
+"""
+
+prefix_sample_c = b"""ICAP/1.0 200 Ok
+X-Infection-Found: Type=10; Resolution=2; THREAT BigBad/Wolf
+"""
+
+
+def test_icap_prefixed_header():
+    host = IcapHostClient({"virus_name_header": "X-Infection-Found: Type=0; Resolution=0; Threat"}, ip='', port=10000)
+    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    assert len(result) == 0
+
+    # Name is case insensitive
+    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; Threat"}, ip='', port=10000)
+    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    assert len(result) == 0
+
+    # header content is case sensitive
+    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; THREAT"}, ip='', port=10000)
+    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    assert len(result) == 0
+    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    assert len(result) == 0
+
+
+def test_icap_regex_header():
+    config = {"virus_name_header": "X-Infection-Found: i/Type=[0-9]+; Resolution=[0-9]+; Threat (.*)/"}
+    host = IcapHostClient(config, ip='', port=10000)
+    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    result = host.parse_scan_result(prefix_sample_c, "test", [], None, {}, {}, [])
+    assert len(result) == 1
+    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
