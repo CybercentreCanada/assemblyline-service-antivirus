@@ -8,7 +8,8 @@ from os.path import getsize
 from random import choice
 from threading import Thread
 from time import sleep, time
-from typing import Any, Dict, List, Optional, Set, Union
+import io
+from typing import Any, Dict, List, Optional, Set, Generic, TypeVar
 
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
@@ -19,6 +20,7 @@ from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
+
 from requests import Session
 
 ICAP_METHOD = "icap"
@@ -100,7 +102,11 @@ class AvHitSection(ResultKeyValueSection):
         # So that we can tag more items of interest
 
 
-class HostClient(ABC):
+BufferType = TypeVar("BufferType")
+DetailType = TypeVar("DetailType")
+
+
+class HostClient(ABC, Generic[DetailType, BufferType]):
     """
     An abstract class that specifies the required methods for a host client
     """
@@ -113,7 +119,8 @@ class HostClient(ABC):
         :param port: The port where the antivirus product is listening
         :return: None
         """
-        raise NotImplementedError
+        self.scan_details: DetailType
+        raise NotImplementedError()
 
     @abstractmethod
     def get_version(self) -> Optional[str]:
@@ -121,17 +128,17 @@ class HostClient(ABC):
         This method gets the version of the antivirus product
         :return: The version of the antivirus product
         """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @abstractmethod
-    def scan_data(self, file_contents: bytes, file_hash: str) -> Optional[str]:
+    def scan_data(self, file_handle: io.BufferedIOBase, file_hash: str) -> Optional[BufferType]:
         """
         This method sends the file contents to the antivirus product for scanning
-        :param file_contents: The contents of the file to be scanned
+        :param file_handle: The contents of the file to be scanned
         :param file_hash: The SHA256 hash of the file contents
         :return: The scan result from the antivirus product
         """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @staticmethod
     @abstractmethod
@@ -143,12 +150,12 @@ class HostClient(ABC):
                                engine version.
         :return: A string detailing the version of the antivirus product, if applicable
         """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @abstractmethod
     def parse_scan_result(
             self,
-            av_results: str,
+            av_results: BufferType,
             av_name: str,
             virus_name_header: str,
             heuristic_analysis_keys: List[str],
@@ -170,10 +177,44 @@ class HostClient(ABC):
         :param safelist_match: A list of antivirus vendor virus names that are determined to be safe
         :return: A list of AvHitSections detailing the results of the scan, if applicable
         """
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
-class IcapHostClient(HostClient):
+class IcapScanDetails:
+    """
+    This class contains details regarding scanning and parsing a file via ICAP
+    """
+
+    def __init__(self, virus_name_header: str = "X-Virus-ID",
+                 scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None) -> None:
+        """
+        This method initializes the IcapScanDetails class
+        :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
+        :param scan_endpoint: The URI endpoint at which the service is listening
+                              for file contents to be submitted or OPTIONS to be queried.
+        :param no_version: A boolean indicating if a product version will be returned if you query OPTIONS.
+        :param version_header: The name of the header of the line in the version results that contains the antivirus
+                               engine version.
+        :return: None
+        """
+        self.virus_name_header = virus_name_header
+        self.scan_endpoint = scan_endpoint
+        self.no_version = no_version
+        self.version_header = version_header
+
+    def __eq__(self, other):
+        """
+        This method verifies the equality between class instances by their attributes
+        :param other: The other class instance which this class instance will be compared with
+        :return: A boolean indicating if the two class instances are equal
+        """
+        if not isinstance(other, IcapScanDetails):
+            return NotImplemented
+        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint and \
+            self.no_version == other.no_version and self.version_header == other.version_header
+
+
+class IcapHostClient(HostClient[IcapScanDetails, bytes]):
     def __init__(self, scan_details: Dict, ip: str, port: int) -> None:
         self.scan_details = IcapScanDetails(**scan_details)
         self.client = IcapClient(
@@ -185,12 +226,13 @@ class IcapHostClient(HostClient):
 
     def get_version(self) -> Optional[str]:
         if not self.scan_details.no_version:
-            return self.client.options_respmod()
-        else:
-            return None
+            body = self.client.options_respmod()
+            if body:
+                return body.decode()
+        return None
 
-    def scan_data(self, file_contents: bytes, file_hash: str) -> Optional[str]:
-        return self.client.scan_data(file_contents, file_hash)
+    def scan_data(self, file_handle: io.BufferedIOBase, file_hash: str) -> Optional[bytes]:
+        return self.client.scan_data(file_handle, file_hash)
 
     @staticmethod
     def parse_version(version_result: Optional[str], version_header: Optional[str] = None) -> Optional[str]:
@@ -211,7 +253,7 @@ class IcapHostClient(HostClient):
 
     def parse_scan_result(
             self,
-            av_results: str,
+            av_results: bytes,
             av_name: str,
             virus_name_header: str,
             heuristic_analysis_keys: List[str],
@@ -221,7 +263,7 @@ class IcapHostClient(HostClient):
             safelist_match: List[str]) -> List[AvHitSection]:
         global av_errors
         virus_name: Optional[str] = None
-        av_hits = []
+        av_hits: list[AvHitSection] = []
 
         result_lines = av_results.strip().splitlines()
         if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
@@ -290,7 +332,58 @@ class IcapHostClient(HostClient):
             self.client.number_of_retries = number_of_retries
 
 
-class HttpHostClient(HostClient):
+class HttpScanDetails:
+    """
+    This class contains details regarding scanning and parsing a file via HTTP
+    """
+
+    def __init__(self, post_data_type: str = "data", json_key_for_post: str = "file", result_in_headers: bool = False,
+                 virus_name_header: str = "X-Virus-ID", version_endpoint: str = "",
+                 scan_endpoint: str = "", base64_encode: bool = False) -> None:
+        """
+        This method initializes the HttpScanDetails class and performs a validity check
+        :param post_data_type: The format in which the file contents will be POSTed to
+                               the antivirus product server (value must be one of "json" or "data").
+        :param json_key_for_post: If the file contents will be POSTed to the antivirus product as the
+                                  value in a JSON key-value pair, this value is the key.
+        :param result_in_headers: A boolean indicating if the antivirus signature will be found in the response headers.
+        :param virus_name_header: The name of the header of the line in the results that
+                                  contains the antivirus hit name.
+        :param version_endpoint: The URI endpoint at which the service is listening for a GET for the
+                                 antivirus product service version.
+        :param scan_endpoint: The URI endpoint at which the service is listening for file contents to be POSTed
+                              or OPTIONS to be queried.
+        :param base64_encode: A boolean indicating if the file contents should be base64 encoded prior to being
+                              POSTed to the antivirus product server.
+        :return: None
+        """
+        if post_data_type not in VALID_POST_TYPES:
+            raise ValueError(f"Given data type for POST '{post_data_type}' is not one of {VALID_POST_TYPES}.")
+
+        self.post_data_type = post_data_type
+        self.json_key_for_post = json_key_for_post
+        self.result_in_headers = result_in_headers
+        self.virus_name_header = virus_name_header
+        self.version_endpoint = version_endpoint
+        self.scan_endpoint = scan_endpoint
+        self.base64_encode = base64_encode
+
+    def __eq__(self, other):
+        """
+        This method verifies the equality between class instances by their attributes
+        :param other: The other class instance which this class instance will be compared with
+        :return: A boolean indicating if the two class instances are equal
+        """
+        if not isinstance(other, HttpScanDetails):
+            return NotImplemented
+        return self.post_data_type == other.post_data_type and self.base64_encode == other.base64_encode and \
+            self.result_in_headers == other.result_in_headers and \
+            self.virus_name_header == other.virus_name_header and \
+            self.json_key_for_post == other.json_key_for_post and \
+            self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
+
+
+class HttpHostClient(HostClient[HttpScanDetails, str]):
     def __init__(self, scan_details: Dict, ip: str, port: int) -> None:
         self.scan_details = HttpScanDetails(**scan_details)
         self.client = Session()
@@ -302,7 +395,8 @@ class HttpHostClient(HostClient):
         else:
             return None
 
-    def scan_data(self, file_contents: bytes, _) -> Optional[str]:
+    def scan_data(self, file_handle: io.BufferedIOBase, _) -> Optional[str]:
+        file_contents: bytes = file_handle.read()
         # Setting up the POST based on the user's configurations
         if self.scan_details.base64_encode:
             file_contents = b64encode(file_contents)
@@ -314,9 +408,13 @@ class HttpHostClient(HostClient):
             resp = self.client.post(scan_url, data=file_contents)
         elif self.scan_details.post_data_type == POST_JSON:
             # If we are posting to JSON, the file contents must be base64 encoded and converted to str
-            file_contents = file_contents.decode(
-                "utf-8") if self.scan_details.base64_encode else b64encode(file_contents).decode("utf-8")
-            json_to_post = {self.scan_details.json_key_for_post: file_contents}
+            if self.scan_details.base64_encode:
+                # The body has already been encoded above
+                encoded_content = file_contents.decode("utf-8")
+            else:
+                encoded_content = b64encode(file_contents).decode("utf-8")
+
+            json_to_post = {self.scan_details.json_key_for_post: encoded_content}
             resp = self.client.post(scan_url, json=json_to_post)
 
         if resp is not None and self.scan_details.result_in_headers:
@@ -327,7 +425,7 @@ class HttpHostClient(HostClient):
             return None
 
     @staticmethod
-    def parse_version(version_result: Optional[str]) -> Optional[str]:
+    def parse_version(version_result: Optional[str], version_header: Optional[str] = None) -> Optional[str]:
         if version_result:
             return safe_str(version_result)
         else:
@@ -382,7 +480,8 @@ class AntiVirusHost:
     """
 
     def __init__(self, group: str, ip: str, port: int, method: str, update_period: int, file_size_limit: int = 0,
-                 heuristic_analysis_keys: List[str] = None, scan_details: Dict[str, Any] = None) -> None:
+                 heuristic_analysis_keys: Optional[List[str]] = None,
+                 scan_details: Optional[Dict[str, Any]] = None) -> None:
         """
         This method initializes the AntiVirusHost class and performs a couple of validity checks
         :param group: The name of the antivirus product
@@ -410,18 +509,16 @@ class AntiVirusHost:
         self.file_size_limit = file_size_limit
         self.heuristic_analysis_keys = heuristic_analysis_keys
 
-        if scan_details is None:
-            scan_details: Dict = {}
-
+        self.host_client: HostClient
         if method == ICAP_METHOD:
             self.host_client = IcapHostClient(
-                scan_details=scan_details,
+                scan_details=scan_details or {},
                 ip=self.ip,
                 port=self.port,
             )
         else:
             self.host_client = HttpHostClient(
-                scan_details=scan_details,
+                scan_details=scan_details or {},
                 ip=self.ip,
                 port=self.port
             )
@@ -456,91 +553,6 @@ class AntiVirusHost:
         self.sleeping = False
 
 
-class IcapScanDetails:
-    """
-    This class contains details regarding scanning and parsing a file via ICAP
-    """
-
-    def __init__(self, virus_name_header: str = "X-Virus-ID",
-                 scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None) -> None:
-        """
-        This method initializes the IcapScanDetails class
-        :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
-        :param scan_endpoint: The URI endpoint at which the service is listening
-                              for file contents to be submitted or OPTIONS to be queried.
-        :param no_version: A boolean indicating if a product version will be returned if you query OPTIONS.
-        :param version_header: The name of the header of the line in the version results that contains the antivirus
-                               engine version.
-        :return: None
-        """
-        self.virus_name_header = virus_name_header
-        self.scan_endpoint = scan_endpoint
-        self.no_version = no_version
-        self.version_header = version_header
-
-    def __eq__(self, other):
-        """
-        This method verifies the equality between class instances by their attributes
-        :param other: The other class instance which this class instance will be compared with
-        :return: A boolean indicating if the two class instances are equal
-        """
-        if not isinstance(other, IcapScanDetails):
-            return NotImplemented
-        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint and \
-            self.no_version == other.no_version and self.version_header == other.version_header
-
-
-class HttpScanDetails:
-    """
-    This class contains details regarding scanning and parsing a file via HTTP
-    """
-
-    def __init__(self, post_data_type: str = "data", json_key_for_post: str = "file", result_in_headers: bool = False,
-                 virus_name_header: str = "X-Virus-ID", version_endpoint: str = "",
-                 scan_endpoint: str = "", base64_encode: bool = False) -> None:
-        """
-        This method initializes the HttpScanDetails class and performs a validity check
-        :param post_data_type: The format in which the file contents will be POSTed to
-                               the antivirus product server (value must be one of "json" or "data").
-        :param json_key_for_post: If the file contents will be POSTed to the antivirus product as the
-                                  value in a JSON key-value pair, this value is the key.
-        :param result_in_headers: A boolean indicating if the antivirus signature will be found in the response headers.
-        :param virus_name_header: The name of the header of the line in the results that
-                                  contains the antivirus hit name.
-        :param version_endpoint: The URI endpoint at which the service is listening for a GET for the
-                                 antivirus product service version.
-        :param scan_endpoint: The URI endpoint at which the service is listening for file contents to be POSTed
-                              or OPTIONS to be queried.
-        :param base64_encode: A boolean indicating if the file contents should be base64 encoded prior to being
-                              POSTed to the antivirus product server.
-        :return: None
-        """
-        if post_data_type not in VALID_POST_TYPES:
-            raise ValueError(f"Given data type for POST '{post_data_type}' is not one of {VALID_POST_TYPES}.")
-
-        self.post_data_type = post_data_type
-        self.json_key_for_post = json_key_for_post
-        self.result_in_headers = result_in_headers
-        self.virus_name_header = virus_name_header
-        self.version_endpoint = version_endpoint
-        self.scan_endpoint = scan_endpoint
-        self.base64_encode = base64_encode
-
-    def __eq__(self, other):
-        """
-        This method verifies the equality between class instances by their attributes
-        :param other: The other class instance which this class instance will be compared with
-        :return: A boolean indicating if the two class instances are equal
-        """
-        if not isinstance(other, HttpScanDetails):
-            return NotImplemented
-        return self.post_data_type == other.post_data_type and self.base64_encode == other.base64_encode and \
-            self.result_in_headers == other.result_in_headers and \
-            self.virus_name_header == other.virus_name_header and \
-            self.json_key_for_post == other.json_key_for_post and \
-            self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
-
-
 # TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
 # Then we can put type hinting in the execute() method
 # Global variables
@@ -564,7 +576,8 @@ class AntiVirus(ServiceBase):
 
         try:
             safelist = self.get_api_interface().get_safelist(["av.virus_name"])
-            [self.safelist_match.extend(match_list) for _, match_list in safelist.get('match', {}).items()]
+            for _, match_list in safelist.get('match', {}).items():
+                self.safelist_match.extend(match_list)
         except ServiceAPIError as e:
             self.log.warning(f"Couldn't retrieve safelist from service: {e}. Continuing without it..")
 
@@ -591,9 +604,10 @@ class AntiVirus(ServiceBase):
                              f"{MIN_SCAN_TIMEOUT_IN_SECONDS + MIN_POST_SCAN_TIME_IN_SECONDS} seconds!")
 
         # Set the IcapClient details on start
-        for host in [host for host in self.hosts if host.method == ICAP_METHOD]:
-            host.host_client.set_timeout(self.connection_timeout)
-            host.host_client.set_number_of_retries(self.number_of_retries)
+        for host in self.hosts:
+            if isinstance(host.host_client, IcapHostClient):
+                host.host_client.set_timeout(self.connection_timeout)
+                host.host_client.set_number_of_retries(self.number_of_retries)
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
@@ -621,7 +635,7 @@ class AntiVirus(ServiceBase):
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
-                    executor.submit(self._thr_process_file, host, request.sha256, request.file_contents, ): host
+                    executor.submit(self._thr_process_file, host, request.sha256, open(request.file_path, 'rb'), ): host
                     for host in selected_hosts
                 }
                 self.log.debug(
@@ -634,7 +648,7 @@ class AntiVirus(ServiceBase):
                         f"[{request.sid}/{request.sha256}] {host.group} host {host.ip}:{host.port} was "
                         f"unable to complete in {scan_timeout}s.")
                     host.mercy_counter += 1
-                    if host.method == ICAP_METHOD:
+                    if isinstance(host.host_client, IcapHostClient):
                         if host.group not in av_errors:
                             av_errors.append(host.group)
                         host.host_client.close()
@@ -642,7 +656,8 @@ class AntiVirus(ServiceBase):
                     # NO MERCY
                     if host.mercy_counter > self.mercy_limit:
                         self.log.warning(
-                            f"{host.group} host {host.ip}:{host.port} errored for the {host.mercy_counter}th time in a row. Going to sleep for {self.sleep_time}s.")
+                            f"{host.group} host {host.ip}:{host.port} errored for the {host.mercy_counter}th "
+                            f"time in a row. Going to sleep for {self.sleep_time}s.")
                         Thread(target=host.sleep, args=[self.sleep_time]).start()
 
                 # Reset the mercy counter on a successful run
@@ -676,7 +691,7 @@ class AntiVirus(ServiceBase):
         self.log.debug("Stopping the AntiVirus service...")
         # Close all ICAP connections
         for host in self.hosts:
-            if host.method == ICAP_METHOD:
+            if isinstance(host.host_client, IcapHostClient):
                 host.host_client.close()
 
     @staticmethod
@@ -710,7 +725,7 @@ class AntiVirus(ServiceBase):
             for product in products for host in product["hosts"]
         ]
 
-    def _thr_process_file(self, host: AntiVirusHost, file_hash: str, file_contents: bytes) -> None:
+    def _thr_process_file(self, host: AntiVirusHost, file_hash: str, file_contents: io.BufferedIOBase) -> None:
         """
         This method handles the file scanning and result parsing
         :param host: The class instance representing an antivirus product
@@ -758,12 +773,12 @@ class AntiVirus(ServiceBase):
             av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
-                   file_contents: bytes) -> Union[Optional[str], Optional[str], AntiVirusHost]:
+                   file_contents: io.BufferedIOBase) -> tuple[Optional[str], Optional[str], AntiVirusHost]:
         """
         This method scans the file and could get the product version using the host's client
         :param host: The class instance representing an antivirus product
         :param file_hash: The hash of the file to scan
-        :param file_contents: The contents of the file to scan
+        :param file_contents: A handle of the file to scan
         :return: The results from scanning the file, the results from querying the product version,
         the AntiVirusHost instance
         """
@@ -797,7 +812,7 @@ class AntiVirus(ServiceBase):
     def _handle_virus_hit_section(
             av_name: str, av_version: str, virus_name: str, heuristic_analysis_keys: List[str],
             sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
-            safelist_match: List[str]) -> None:
+            safelist_match: List[str]) -> AvHitSection:
         """
         This method handles the creation of AvHitSections
         :param av_name: The name of the antivirus product
