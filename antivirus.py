@@ -219,14 +219,13 @@ class IcapHostClient(HostClient):
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
             safelist_match: List[str]) -> List[AvHitSection]:
-        global av_errors
         virus_name: Optional[str] = None
         av_hits = []
 
         result_lines = av_results.strip().splitlines()
         if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
-            if av_name not in av_errors:
-                av_errors.append(av_name)
+            if av_name not in self.av_errors:
+                self.av_errors.append(av_name)
             raise Exception(
                 f'Invalid result from {av_name} ICAP '
                 f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
@@ -541,13 +540,6 @@ class HttpScanDetails:
             self.version_endpoint == other.version_endpoint and self.scan_endpoint == other.scan_endpoint
 
 
-# TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
-# Then we can put type hinting in the execute() method
-# Global variables
-av_hit_result_sections: List[AvHitSection] = []
-av_errors: List[str] = []
-
-
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
@@ -561,6 +553,8 @@ class AntiVirus(ServiceBase):
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
+        self.av_hit_result_sections: List[AvHitSection] = []
+        self.av_errors: List[str] = []
 
         try:
             safelist = self.get_api_interface().get_safelist(["av.virus_name"])
@@ -597,11 +591,9 @@ class AntiVirus(ServiceBase):
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
-        global av_hit_result_sections
-        global av_errors
-        # Reset globals for each request
-        av_hit_result_sections = []
-        av_errors = []
+        # Reset for each request
+        self.av_hit_result_sections = []
+        self.av_errors = []
 
         request.result = Result()
         max_workers = len(self.hosts)
@@ -635,8 +627,8 @@ class AntiVirus(ServiceBase):
                         f"unable to complete in {scan_timeout}s.")
                     host.mercy_counter += 1
                     if host.method == ICAP_METHOD:
-                        if host.group not in av_errors:
-                            av_errors.append(host.group)
+                        if host.group not in self.av_errors:
+                            self.av_errors.append(host.group)
                         host.host_client.close()
 
                     # NO MERCY
@@ -660,14 +652,14 @@ class AntiVirus(ServiceBase):
                 raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
-        for result_section in av_hit_result_sections[:]:
+        for result_section in self.av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
-                av_hit_result_sections.remove(result_section)
+                self.av_hit_result_sections.remove(result_section)
 
         self.log.debug(
-            f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit "
+            f"[{request.sid}/{request.sha256}] Adding the {len(self.av_hit_result_sections)} AV hit "
             "result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
+        AntiVirus._gather_results(selected_hosts, self.av_hit_result_sections, self.av_errors, request.result)
         data = AntiVirus._preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
@@ -718,9 +710,6 @@ class AntiVirus(ServiceBase):
         :param file_contents: The contents of the file to scan
         :return: None
         """
-        global av_hit_result_sections
-        global av_errors
-
         # Step 1: Scan file
         start_scan_time = time()
         result, version, host = self._scan_file(host, file_hash, file_contents)
@@ -732,7 +721,7 @@ class AntiVirus(ServiceBase):
             getattr(host.host_client.scan_details, "version_header", None)
         )
         if result == ERROR_RESULT:
-            av_errors.append(host.group)
+            self.av_errors.append(host.group)
             av_hits = []
         elif result is not None:
             av_hits = host.host_client.parse_scan_result(
@@ -755,7 +744,7 @@ class AntiVirus(ServiceBase):
 
         # Step 3: Add parsed results to result section lists
         for av_hit in av_hits:
-            av_hit_result_sections.append(av_hit)
+            self.av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
                    file_contents: bytes) -> Union[Optional[str], Optional[str], AntiVirusHost]:
