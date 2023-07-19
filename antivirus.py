@@ -83,6 +83,8 @@ class AvHitSection(ResultKeyValueSection):
 
         signature_name = f'{av_name}.{virus_name}'
         self.set_heuristic(heur_id)
+        assert self.heuristic, "Assert side effect of set_heuristic so type checker understands context."
+
         if signature_name in sig_score_revision_map:
             self.heuristic.add_signature_id(signature_name, sig_score_revision_map[signature_name])
         elif any(kw in signature_name.lower() for kw in kw_score_revision_map):
@@ -212,9 +214,11 @@ class IcapScanDetails:
         """
         if not isinstance(other, IcapScanDetails):
             return NotImplemented
-        return self.virus_name_header == other.virus_name_header and self.scan_endpoint == other.scan_endpoint and \
-            self.no_version == other.no_version and self.version_header == other.version_header and \
-                self.check_body_for_headers == other.check_body_for_headers
+        return self.virus_name_header == other.virus_name_header and \
+            self.scan_endpoint == other.scan_endpoint and \
+            self.no_version == other.no_version and \
+            self.version_header == other.version_header and \
+            self.check_body_for_headers == other.check_body_for_headers
 
 
 class IcapHostClient(HostClient[IcapScanDetails]):
@@ -283,7 +287,8 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
 
-        _status_code, _status_message, headers = self.client.parse_headers(av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
+        _status_code, _status_message, headers = self.client.parse_headers(
+            av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
 
         # result_lines = av_results.strip().splitlines()
         # if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
@@ -842,7 +847,7 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def _handle_virus_hit_section(
-            av_name: str, av_version: str, virus_name: str, heuristic_analysis_keys: List[str],
+            av_name: str, av_version: Optional[str], virus_name: str, heuristic_analysis_keys: List[str],
             sig_score_revision_map: Dict[str, int], kw_score_revision_map: Dict[str, int],
             safelist_match: List[str]) -> AvHitSection:
         """
