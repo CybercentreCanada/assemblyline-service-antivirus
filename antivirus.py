@@ -1,4 +1,6 @@
+import io
 import json
+import re
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -8,9 +10,7 @@ from os.path import getsize
 from random import choice
 from threading import Thread
 from time import sleep, time
-import io
-import re
-from typing import Any, Dict, List, Optional, Set, Generic, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Set, TypeVar
 
 from assemblyline.common.exceptions import RecoverableError
 from assemblyline.common.isotime import epoch_to_local
@@ -21,7 +21,6 @@ from assemblyline_v4_service.common.api import ServiceAPIError
 from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runtime_error
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
-
 from requests import Session
 
 ICAP_METHOD = "icap"
@@ -283,7 +282,6 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             sig_score_revision_map: Dict[str, int],
             kw_score_revision_map: Dict[str, int],
             safelist_match: List[str]) -> List[AvHitSection]:
-        global av_errors
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
 
@@ -292,8 +290,8 @@ class IcapHostClient(HostClient[IcapScanDetails]):
 
         # result_lines = av_results.strip().splitlines()
         # if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
-        #     if av_name not in av_errors:
-        #         av_errors.append(av_name)
+        #     if av_name not in self.av_errors:
+        #         self.av_errors.append(av_name)
         #     raise Exception(
         #         f'Invalid result from {av_name} ICAP '
         #         f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
@@ -611,6 +609,8 @@ class AntiVirus(ServiceBase):
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
+        self.av_hit_result_sections: List[AvHitSection] = []
+        self.av_errors: List[str] = []
 
         try:
             safelist = self.get_api_interface().get_safelist(["av.virus_name"])
@@ -649,11 +649,9 @@ class AntiVirus(ServiceBase):
 
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
-        global av_hit_result_sections
-        global av_errors
-        # Reset globals for each request
-        av_hit_result_sections = []
-        av_errors = []
+        # Reset for each request
+        self.av_hit_result_sections = []
+        self.av_errors = []
 
         request.result = Result()
         max_workers = len(self.hosts)
@@ -687,8 +685,8 @@ class AntiVirus(ServiceBase):
                         f"unable to complete in {scan_timeout}s.")
                     host.mercy_counter += 1
                     if isinstance(host.host_client, IcapHostClient):
-                        if host.group not in av_errors:
-                            av_errors.append(host.group)
+                        if host.group not in self.av_errors:
+                            self.av_errors.append(host.group)
                         host.host_client.close()
 
                     # NO MERCY
@@ -713,14 +711,14 @@ class AntiVirus(ServiceBase):
                 raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
-        for result_section in av_hit_result_sections[:]:
+        for result_section in self.av_hit_result_sections[:]:
             if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
-                av_hit_result_sections.remove(result_section)
+                self.av_hit_result_sections.remove(result_section)
 
         self.log.debug(
-            f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit "
+            f"[{request.sid}/{request.sha256}] Adding the {len(self.av_hit_result_sections)} AV hit "
             "result sections to the Result")
-        AntiVirus._gather_results(selected_hosts, av_hit_result_sections, av_errors, request.result)
+        AntiVirus._gather_results(selected_hosts, self.av_hit_result_sections, self.av_errors, request.result)
         data = AntiVirus._preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
@@ -771,9 +769,6 @@ class AntiVirus(ServiceBase):
         :param file_contents: The contents of the file to scan
         :return: None
         """
-        global av_hit_result_sections
-        global av_errors
-
         # Step 1: Scan file
         start_scan_time = time()
         result, version, host = self._scan_file(host, file_hash, file_contents)
@@ -785,7 +780,7 @@ class AntiVirus(ServiceBase):
             getattr(host.host_client.scan_details, "version_header", None)
         )
         if result == ERROR_RESULT:
-            av_errors.append(host.group)
+            self.av_errors.append(host.group)
             av_hits = []
         elif result is not None:
             av_hits = host.host_client.parse_scan_result(
@@ -807,7 +802,7 @@ class AntiVirus(ServiceBase):
 
         # Step 3: Add parsed results to result section lists
         for av_hit in av_hits:
-            av_hit_result_sections.append(av_hit)
+            self.av_hit_result_sections.append(av_hit)
 
     def _scan_file(self, host: AntiVirusHost, file_hash: str,
                    file_contents: io.BufferedIOBase) -> tuple[Optional[bytes], Optional[str], AntiVirusHost]:

@@ -774,19 +774,18 @@ class TestAntiVirus:
 
     @staticmethod
     def test_thr_process_file(antivirus_class_instance, mocker):
-        from antivirus import av_hit_result_sections
         avhost = AntiVirusHost("blah", "blah", 1, "icap", 1)
         mocker.patch.object(AntiVirus, "_scan_file", return_value=(None, None, avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value=None)
         mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=[])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert av_hit_result_sections == []
+        assert antivirus_class_instance.av_hit_result_sections == []
 
         mocker.patch.object(AntiVirus, "_scan_file", return_value=("blah", "blah", avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value="blah")
         mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=["blah"])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert av_hit_result_sections == ["blah"]
+        assert antivirus_class_instance.av_hit_result_sections == ["blah"]
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
