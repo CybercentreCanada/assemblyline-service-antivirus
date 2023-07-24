@@ -88,6 +88,8 @@ av_config:
           port: 1344
           method: "icap"
           update_period: 240
+          scan_details:
+            check_body_for_headers: True
         - ip: "<ip>"
           port: 9090
           method: "http"
