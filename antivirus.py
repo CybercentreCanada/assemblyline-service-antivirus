@@ -288,15 +288,6 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         _status_code, _status_message, headers = self.client.parse_headers(
             av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
 
-        # result_lines = av_results.strip().splitlines()
-        # if 0 < len(result_lines) <= 3 and "204" not in result_lines[0]:
-        #     if av_name not in self.av_errors:
-        #         self.av_errors.append(av_name)
-        #     raise Exception(
-        #         f'Invalid result from {av_name} ICAP '
-        #         f'server {self.client.host}:{self.client.port} -> {safe_str(str(av_results))}'
-        #     )
-
         if self.virus_header_pattern is not None:
             for header, value in headers.items():
                 if header == self.virus_name_header:
@@ -589,13 +580,6 @@ class AntiVirusHost:
         self.sleeping = False
 
 
-# TODO: This is here until we phase out the use of Python 3.7 (https://github.com/python/cpython/pull/9844)
-# Then we can put type hinting in the execute() method
-# Global variables
-av_hit_result_sections: List[AvHitSection] = []
-av_errors: List[str] = []
-
-
 class AntiVirus(ServiceBase):
     def __init__(self, config: Optional[Dict] = None) -> None:
         super(AntiVirus, self).__init__(config)
@@ -782,6 +766,14 @@ class AntiVirus(ServiceBase):
         if result == ERROR_RESULT:
             self.av_errors.append(host.group)
             av_hits = []
+        # If an empty string is returned, we will treat this like an error
+        elif result is not None and not result.strip():
+            self.av_errors.append(host.group)
+            av_hits = []
+            raise Exception(
+                f'Invalid result from {host.group} '
+                f'server {host.ip}:{host.port} -> "{safe_str(str(result))}"'
+            )
         elif result is not None:
             av_hits = host.host_client.parse_scan_result(
                 av_results=result,
