@@ -45,7 +45,7 @@ Example of `av_config` from service_manifest.yaml in YAML form
 ```
 av_config:
   products:
-    - product: "Kasperksy"
+    - product: "Kaspersky"
 
       # A list of strings that are found in the antivirus product's signatures that indicate that
       # heuristic analysis caused the signature to be raised. This is considered "Suspicious" in the context of
