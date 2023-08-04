@@ -187,7 +187,7 @@ class IcapScanDetails:
 
     def __init__(self, virus_name_header: str = "X-Virus-ID",
                  scan_endpoint: str = "", no_version: bool = False, version_header: Optional[str] = None,
-                 check_body_for_headers: bool = False) -> None:
+                 check_body_for_headers: bool = False, no_status_line_in_headers: bool = False) -> None:
         """
         This method initializes the IcapScanDetails class
         :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
@@ -197,6 +197,8 @@ class IcapScanDetails:
         :param version_header: The name of the header of the line in the version results that contains the antivirus
                                engine version.
         :param check_body_for_headers: A boolean indicating if the ICAP response body could contain important headers
+        :param no_status_line_in_headers: A boolean indicating if the ICAP response body does not contain the standard
+                                          status header such as 'ICAP/1.0 200 BLOCKED'
         :return: None
         """
         self.virus_name_header = virus_name_header
@@ -204,6 +206,7 @@ class IcapScanDetails:
         self.no_version = no_version
         self.version_header = version_header
         self.check_body_for_headers = check_body_for_headers
+        self.no_status_line_in_headers = no_status_line_in_headers
 
     def __eq__(self, other):
         """
@@ -217,7 +220,8 @@ class IcapScanDetails:
             self.scan_endpoint == other.scan_endpoint and \
             self.no_version == other.no_version and \
             self.version_header == other.version_header and \
-            self.check_body_for_headers == other.check_body_for_headers
+            self.check_body_for_headers == other.check_body_for_headers and \
+            self.no_status_line_in_headers == other.no_status_line_in_headers
 
 
 class IcapHostClient(HostClient[IcapScanDetails]):
@@ -287,7 +291,10 @@ class IcapHostClient(HostClient[IcapScanDetails]):
 
         try:
             _status_code, _status_message, headers = self.client.parse_headers(
-                av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
+                av_results,
+                check_body_for_headers=self.scan_details.check_body_for_headers,
+                no_status_line_in_headers=self.scan_details.no_status_line_in_headers
+            )
         except ValueError as e:
             # Raise up which host caused the error
             raise ValueError(f"{av_name} host {self.client.host}:{self.client.port} - {e}")
