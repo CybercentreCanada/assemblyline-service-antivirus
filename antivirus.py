@@ -285,8 +285,12 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         virus_name: Optional[str] = None
         av_hits: list[AvHitSection] = []
 
-        _status_code, _status_message, headers = self.client.parse_headers(
-            av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
+        try:
+            _status_code, _status_message, headers = self.client.parse_headers(
+                av_results, check_body_for_headers=self.scan_details.check_body_for_headers)
+        except ValueError as e:
+            # Raise up which host caused the error
+            raise ValueError(f"{av_name} host {self.client.host.ip}:{self.client.host.port} - {e}")
 
         if self.virus_header_pattern is not None:
             for header, value in headers.items():
