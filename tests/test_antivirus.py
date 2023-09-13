@@ -1,12 +1,12 @@
 import json
 import os
 import shutil
+from io import BytesIO
 from json import dumps
 from math import floor
 from socket import timeout
 from threading import Thread
 from time import sleep, time
-from io import BytesIO
 
 import pytest
 from antivirus import (
@@ -21,6 +21,7 @@ from antivirus import (
     IcapScanDetails,
     Session,
 )
+from assemblyline.common.exceptions import NonRecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline_service_utilities.common.icap import IcapClient
@@ -735,22 +736,30 @@ class TestAntiVirus:
 
     @staticmethod
     def test_gather_results(dummy_result_class_instance):
-        hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", 1), AntiVirusHost("blah2", "blah", 1234, "icap", 1)]
+        hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", 1), AntiVirusHost("blah2", "blah", 1234, "icap", 1), AntiVirusHost("blah3", "blah", 1234, "icap", 1), AntiVirusHost("blah4", "blah", 1234, "icap", 1)]
         AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
 
-        AntiVirus._gather_results(hosts, [], ["blah1", "blah2"], dummy_result_class_instance)
+        # Single host scan error, no hits
+        AntiVirus._gather_results(hosts, [], ["blah1"], dummy_result_class_instance)
         no_result_section = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section.set_body(
-            json.dumps(dict(errors_during_scanning=[host.group for host in hosts])),
+            json.dumps(dict(
+                no_threat_detected=["blah2", "blah3", "blah4"],
+                errors_during_scanning=["blah1"],
+            )),
             BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section)
+
+        # Triple host scan error, no hits
+        with pytest.raises(NonRecoverableError):
+            AntiVirus._gather_results(hosts, [], ["blah1", "blah2", "blah4"], dummy_result_class_instance)
 
         correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1, {}, {}, [])
         AntiVirus._gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
         no_result_section2 = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section2.set_body(
-            json.dumps(dict(no_threat_detected=[host.group for host in hosts[: 1]])),
+            json.dumps(dict(no_threat_detected=["blah1", "blah3", "blah4"])),
             BODY_FORMAT.KEY_VALUE)
         assert check_section_equality(dummy_result_class_instance.sections[1], correct_av_result_section)
         assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
