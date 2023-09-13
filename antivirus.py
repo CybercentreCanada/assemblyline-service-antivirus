@@ -12,7 +12,7 @@ from threading import Thread
 from time import sleep, time
 from typing import Any, Dict, Generic, List, Optional, Set, TypeVar
 
-from assemblyline.common.exceptions import RecoverableError
+from assemblyline.common.exceptions import NonRecoverableError, RecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.common.str_utils import safe_str
 from assemblyline.odm.models.ontology.results.antivirus import Antivirus
@@ -703,7 +703,7 @@ class AntiVirus(ServiceBase):
                 message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
                 self.log.error(message)
             else:
-                raise
+                raise NonRecoverableError(e)
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in self.av_hit_result_sections[:]:
@@ -899,6 +899,11 @@ class AntiVirus(ServiceBase):
             host_groups = [host.group for host in hosts]
             no_result_hosts = [host_group for host_group in host_groups if host_group not in av_errors and not any(
                 host_group in result_section.body for result_section in hit_result_sections)]
+
+            # If we have more scanning errors than successful scans, we should raise this error
+            if len(av_errors) > len(hosts) - len(av_errors):
+                raise NonRecoverableError("More antivirus engines threw errors when scanning this file than were successful.")
+
             no_threat_sec = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
             if no_result_hosts:
                 no_threat_sec.set_item("no_threat_detected", [host for host in no_result_hosts])
