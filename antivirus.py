@@ -703,7 +703,7 @@ class AntiVirus(ServiceBase):
                 message = f"[{request.sid}/{request.sha256}] Thread pool error: {e}"
                 self.log.error(message)
             else:
-                raise NonRecoverableError(e)
+                raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
         for result_section in self.av_hit_result_sections[:]:
