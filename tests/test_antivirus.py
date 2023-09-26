@@ -44,26 +44,22 @@ samples = [
     dict(
         sid=1,
         metadata={},
-        service_name='antivirus',
+        service_name="antivirus",
         service_config={},
         fileinfo=dict(
-            magic='ASCII text, with no line terminators',
-            md5='fda4e701258ba56f465e3636e60d36ec',
-            mime='text/plain',
-            sha1='af2c2618032c679333bebf745e75f9088748d737',
-            sha256='dadc624d4454e10293dbd1b701b9ee9f99ef83b4cd07b695111d37eb95abcff8',
+            magic="ASCII text, with no line terminators",
+            md5="fda4e701258ba56f465e3636e60d36ec",
+            mime="text/plain",
+            sha1="af2c2618032c679333bebf745e75f9088748d737",
+            sha256="dadc624d4454e10293dbd1b701b9ee9f99ef83b4cd07b695111d37eb95abcff8",
             size=19,
-            type='unknown',
+            type="unknown",
         ),
-        filename='dadc624d4454e10293dbd1b701b9ee9f99ef83b4cd07b695111d37eb95abcff8',
-        min_classification='TLP:WHITE',
+        filename="dadc624d4454e10293dbd1b701b9ee9f99ef83b4cd07b695111d37eb95abcff8",
+        min_classification="TLP:WHITE",
         max_files=501,  # TODO: get the actual value
         ttl=3600,
-        safelist_config={
-            "enabled": False,
-            "hash_types": ['sha1', 'sha256'],
-            "enforce_safelist_service": False
-        }
+        safelist_config={"enabled": False, "hash_types": ["sha1", "sha256"], "enforce_safelist_service": False},
     ),
 ]
 
@@ -104,6 +100,7 @@ def antivirus_class_instance(mocker, dummy_api_interface):
 def dummy_result_class_instance():
     create_tmp_manifest()
     try:
+
         class DummyResult(object):
             def __init__(self):
                 self.sections = []
@@ -123,6 +120,7 @@ def dummy_requests_class_instance():
             self.text = text
             self.content = text.encode()
             self.headers = {"Via": "(blah)"}
+
     return DummyRequests
 
 
@@ -135,6 +133,7 @@ def dummy_api_interface():
         @staticmethod
         def get_safelist(*args):
             return {}
+
     return DummyApiInterface
 
 
@@ -159,8 +158,14 @@ class TestAntiVirusHost:
         assert avhost_icap_with_no_details.sleeping is False
         assert avhost_icap_with_no_details.mercy_counter == 0
 
-        avhost_icap_with_details = antivirushost_class("blah", "blah", 8008, "icap", 100, scan_details={
-                                                       "virus_name_header": "blah", "scan_endpoint": "blah", "no_version": True})
+        avhost_icap_with_details = antivirushost_class(
+            "blah",
+            "blah",
+            8008,
+            "icap",
+            100,
+            scan_details={"virus_name_header": "blah", "scan_endpoint": "blah", "no_version": True},
+        )
         assert avhost_icap_with_details.group == "blah"
         assert avhost_icap_with_details.ip == "blah"
         assert avhost_icap_with_details.port == 8008
@@ -195,10 +200,22 @@ class TestAntiVirusHost:
         assert avhost_http_with_no_details.mercy_counter == 0
 
         avhost_http_with_details = antivirushost_class(
-            "blah", "blah", 8008, "http", 100, ["blah"],
-            scan_details={"post_data_type": "json", "json_key_for_post": "blah", "result_in_headers": True,
-                          "virus_name_header": "blah", "version_endpoint": "blah",
-                          "scan_endpoint": "blah", "base64_encode": True})
+            "blah",
+            "blah",
+            8008,
+            "http",
+            100,
+            ["blah"],
+            scan_details={
+                "post_data_type": "json",
+                "json_key_for_post": "blah",
+                "result_in_headers": True,
+                "virus_name_header": "blah",
+                "version_endpoint": "blah",
+                "scan_endpoint": "blah",
+                "base64_encode": True,
+            },
+        )
         assert avhost_http_with_details.group == "blah"
         assert avhost_http_with_details.ip == "blah"
         assert avhost_http_with_details.port == 8008
@@ -310,76 +327,120 @@ class TestAvHitSection:
         sig_score_rev_map = {}
         kw_score_rev_map = {}
         safelist_match = []
-        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
-                                      kw_score_rev_map, safelist_match)
+        actual_res_sec = AvHitSection(
+            av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map, kw_score_rev_map, safelist_match
+        )
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
         correct_result_section.set_heuristic(1)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
         correct_result_section.add_tag("av.virus_name", virus_name)
         correct_result_section.set_body(
-            dumps(
-                {"av_name": av_name, "virus_name": virus_name, "scan_result": "infected",
-                 "av_version": av_version}),
-            BODY_FORMAT.KEY_VALUE)
+            dumps({"av_name": av_name, "virus_name": virus_name, "scan_result": "infected", "av_version": av_version}),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         temp_virus_name = ";:blah="
         engine = {"version": "blah", "def_time": 1}
         heur_id = 2
         safelist_match = ["blah"]
-        actual_res_sec = AvHitSection(av_name, av_version, temp_virus_name, engine, heur_id, sig_score_rev_map,
-                                      kw_score_rev_map, safelist_match)
+        actual_res_sec = AvHitSection(
+            av_name, av_version, temp_virus_name, engine, heur_id, sig_score_rev_map, kw_score_rev_map, safelist_match
+        )
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
         correct_result_section.add_tag("av.virus_name", virus_name)
         correct_result_section.add_tag("av.heuristic", virus_name)
         correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 0)
-        correct_result_section.set_body(dumps(
-            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
-             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
+        correct_result_section.set_body(
+            dumps(
+                {
+                    "av_name": av_name,
+                    "virus_name": virus_name,
+                    "scan_result": "suspicious",
+                    "engine_version": "blah",
+                    "engine_definition_time": 1,
+                    "av_version": av_version,
+                }
+            ),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         kw_score_rev_map = {"bla": 1}
-        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
-                                      kw_score_rev_map, safelist_match)
+        actual_res_sec = AvHitSection(
+            av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map, kw_score_rev_map, safelist_match
+        )
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
         correct_result_section.add_tag("av.virus_name", virus_name)
         correct_result_section.add_tag("av.heuristic", virus_name)
         correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 1)
-        correct_result_section.set_body(dumps(
-            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
-             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
+        correct_result_section.set_body(
+            dumps(
+                {
+                    "av_name": av_name,
+                    "virus_name": virus_name,
+                    "scan_result": "suspicious",
+                    "engine_version": "blah",
+                    "engine_definition_time": 1,
+                    "av_version": av_version,
+                }
+            ),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         kw_score_rev_map = {"bla": 1, "h": 2}
-        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
-                                      kw_score_rev_map, safelist_match)
+        actual_res_sec = AvHitSection(
+            av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map, kw_score_rev_map, safelist_match
+        )
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
         correct_result_section.add_tag("av.virus_name", virus_name)
         correct_result_section.add_tag("av.heuristic", virus_name)
         correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 2)
-        correct_result_section.set_body(dumps(
-            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
-             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
+        correct_result_section.set_body(
+            dumps(
+                {
+                    "av_name": av_name,
+                    "virus_name": virus_name,
+                    "scan_result": "suspicious",
+                    "engine_version": "blah",
+                    "engine_definition_time": 1,
+                    "av_version": av_version,
+                }
+            ),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(actual_res_sec, correct_result_section)
 
         sig_score_rev_map = {f"{av_name}.{virus_name}": 10}
-        actual_res_sec = AvHitSection(av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map,
-                                      kw_score_rev_map, safelist_match)
+        actual_res_sec = AvHitSection(
+            av_name, av_version, virus_name, engine, heur_id, sig_score_rev_map, kw_score_rev_map, safelist_match
+        )
         correct_result_section = ResultSection(f"{av_name} identified the file as {virus_name}")
         correct_result_section.add_tag("av.virus_name", virus_name)
         correct_result_section.add_tag("av.heuristic", virus_name)
         correct_result_section.set_heuristic(2)
         correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}", 10)
-        correct_result_section.set_body(dumps(
-            {"av_name": av_name, "virus_name": virus_name, "scan_result": "suspicious", "engine_version": "blah",
-             "engine_definition_time": 1, "av_version": av_version}), BODY_FORMAT.KEY_VALUE)
+        correct_result_section.set_body(
+            dumps(
+                {
+                    "av_name": av_name,
+                    "virus_name": virus_name,
+                    "scan_result": "suspicious",
+                    "engine_version": "blah",
+                    "engine_definition_time": 1,
+                    "av_version": av_version,
+                }
+            ),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(actual_res_sec, correct_result_section)
 
 
-ICAP_STATUS = b'ICAP/1.0 200 Ok\r\n'
+ICAP_STATUS = b"ICAP/1.0 200 Ok\r\n"
 
 
 class TestIcapHostClient:
@@ -412,7 +473,7 @@ class TestIcapHostClient:
             ("Server:blah", None, "blah"),
             ("Service:blah", None, "blah"),
             ("blah:blah", "blah:", "blah"),
-        ]
+        ],
     )
     def test_icap_host_client_parse_version(version_result, version_header, correct_result):
         assert IcapHostClient.parse_version(version_result, version_header) == correct_result
@@ -421,48 +482,79 @@ class TestIcapHostClient:
     @pytest.mark.parametrize(
         "icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
         # Empty header
-        [(ICAP_STATUS + b"\n", "", "", "", {},
-          0, {}),
-         # Series of nonsense headers
-         (ICAP_STATUS + b"blah\nblah\nblah\nblah", "", "", "", {},
-          0, {}),
-         # Simple header with virus name
-         (ICAP_STATUS + b"X-Virus-ID: virus_name\nblah\nblah", "blah", "virus_name", "blah identified the file as virus_name",
-          {"av.virus_name": ["virus_name"]},
-          1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
-          '"infected", "av_version": "blah"}'),
-         # Rely on VirusFound string
-         (ICAP_STATUS + b"VirusFound\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
-          {"av.virus_name": ["Unknown"]},
-          1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
-          '"infected", "av_version": "blah"}'),
-         (ICAP_STATUS + b"X-Virus-ID:;\nblah\nblah", "blah", "Unknown", "blah identified the file as Unknown",
-          {"av.virus_name": ["Unknown"]},
-          1, '{"av_name": "blah", "virus_name": "Unknown", "scan_result": '
-          '"infected", "av_version": "blah"}'),
-         (ICAP_STATUS + b"X-Virus-ID: HEUR:virus_heur\nblah\nblah", "blah", "virus_heur",
-          "blah identified the file as virus_heur",
-          {"av.virus_name": ["virus_heur"],
-           "av.heuristic": ["virus_heur"]},
-          2, '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
-         (ICAP_STATUS + b"X-Virus-ID: virus_heur (HTML)\nblah\nblah", "blah", "virus_heur (HTML)",
-          "blah identified the file as virus_heur (HTML)",
-          {"av.virus_name": ["virus_heur (HTML)"]},
-          1, '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}'),
-         (ICAP_STATUS + b"X-Virus-ID: virus_heur/generic blah\nblah\nblah", "blah", "virus_heur/generic blah",
-          "blah identified the file as virus_heur/generic blah",
-          {"av.virus_name": ["virus_heur/generic blah"]},
-          1, '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}'), ])
+        [
+            (ICAP_STATUS + b"\n", "", "", "", {}, 0, {}),
+            # Series of nonsense headers
+            (ICAP_STATUS + b"blah\nblah\nblah\nblah", "", "", "", {}, 0, {}),
+            # Simple header with virus name
+            (
+                ICAP_STATUS + b"X-Virus-ID: virus_name\nblah\nblah",
+                "blah",
+                "virus_name",
+                "blah identified the file as virus_name",
+                {"av.virus_name": ["virus_name"]},
+                1,
+                '{"av_name": "blah", "virus_name": "virus_name", "scan_result": ' '"infected", "av_version": "blah"}',
+            ),
+            # Rely on VirusFound string
+            (
+                ICAP_STATUS + b"VirusFound\nblah\nblah",
+                "blah",
+                "Unknown",
+                "blah identified the file as Unknown",
+                {"av.virus_name": ["Unknown"]},
+                1,
+                '{"av_name": "blah", "virus_name": "Unknown", "scan_result": ' '"infected", "av_version": "blah"}',
+            ),
+            (
+                ICAP_STATUS + b"X-Virus-ID:;\nblah\nblah",
+                "blah",
+                "Unknown",
+                "blah identified the file as Unknown",
+                {"av.virus_name": ["Unknown"]},
+                1,
+                '{"av_name": "blah", "virus_name": "Unknown", "scan_result": ' '"infected", "av_version": "blah"}',
+            ),
+            (
+                ICAP_STATUS + b"X-Virus-ID: HEUR:virus_heur\nblah\nblah",
+                "blah",
+                "virus_heur",
+                "blah identified the file as virus_heur",
+                {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]},
+                2,
+                '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}',
+            ),
+            (
+                ICAP_STATUS + b"X-Virus-ID: virus_heur (HTML)\nblah\nblah",
+                "blah",
+                "virus_heur (HTML)",
+                "blah identified the file as virus_heur (HTML)",
+                {"av.virus_name": ["virus_heur (HTML)"]},
+                1,
+                '{"av_name": "blah", "virus_name": "virus_heur (HTML)", "scan_result": "infected", "av_version": "blah"}',
+            ),
+            (
+                ICAP_STATUS + b"X-Virus-ID: virus_heur/generic blah\nblah\nblah",
+                "blah",
+                "virus_heur/generic blah",
+                "blah identified the file as virus_heur/generic blah",
+                {"av.virus_name": ["virus_heur/generic blah"]},
+                1,
+                '{"av_name": "blah", "virus_name": "virus_heur/generic blah", "scan_result": "infected", "av_version": "blah"}',
+            ),
+        ],
+    )
     def test_icap_host_parse_scan_result(
-            icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
+        icap_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body
+    ):
         av_name = "blah"
         client = IcapHostClient({"virus_name_header": "X-Virus-ID"}, "127.0.0.1", 123)
         if not icap_result:
-            assert client.parse_scan_result(icap_result, av_name, [], version,  {}, {}, []) == []
+            assert client.parse_scan_result(icap_result, av_name, [], version, {}, {}, []) == []
 
         if len(icap_result.splitlines()) == 1:
             with pytest.raises(Exception):
-                client.parse_scan_result(icap_result, av_name, [], version,  {}, {}, [])
+                client.parse_scan_result(icap_result, av_name, [], version, {}, {}, [])
             return
 
         if not expected_section_title:
@@ -475,8 +567,7 @@ class TestIcapHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_sections = client.parse_scan_result(
-                icap_result, av_name, ["HEUR:"], version, {}, {}, [])
+            test_result_sections = client.parse_scan_result(icap_result, av_name, ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
@@ -522,7 +613,7 @@ class TestHttpHostClient:
         [
             ("", None),
             ("blah", "blah"),
-        ]
+        ],
     )
     def test_http_host_client_parse_version(version_result, correct_result):
         assert HttpHostClient.parse_version(version_result) == correct_result
@@ -532,23 +623,34 @@ class TestHttpHostClient:
         "http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body",
         [
             ("{}", "", "", "", {}, 0, {}),
-            ("{\"not_detectionName\":\"blah\"}", "", "", "", {}, 0, {}),
-            ("{\"detectionName\":\"virus_name\"}", "blah", "virus_name", "blah identified the file as virus_name",
-             {"av.virus_name": ["virus_name"]}, 1, '{"av_name": "blah", "virus_name": "virus_name", "scan_result": '
-                                                   '"infected", "av_version": "blah"}'),
-            ("{\"detectionName\": \"HEUR:virus_heur\"}", "blah", "virus_heur",
-             "blah identified the file as virus_heur",
-             {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]}, 2,
-             '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}'),
-        ]
+            ('{"not_detectionName":"blah"}', "", "", "", {}, 0, {}),
+            (
+                '{"detectionName":"virus_name"}',
+                "blah",
+                "virus_name",
+                "blah identified the file as virus_name",
+                {"av.virus_name": ["virus_name"]},
+                1,
+                '{"av_name": "blah", "virus_name": "virus_name", "scan_result": ' '"infected", "av_version": "blah"}',
+            ),
+            (
+                '{"detectionName": "HEUR:virus_heur"}',
+                "blah",
+                "virus_heur",
+                "blah identified the file as virus_heur",
+                {"av.virus_name": ["virus_heur"], "av.heuristic": ["virus_heur"]},
+                2,
+                '{"av_name": "blah", "virus_name": "virus_heur", "scan_result": "suspicious", "av_version": "blah"}',
+            ),
+        ],
     )
     def test_http_host_client_parse_scan_result(
-            http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body):
+        http_result, version, virus_name, expected_section_title, expected_tags, expected_heuristic, expected_body
+    ):
         av_name = "blah"
         client = HttpHostClient({"virus_name_header": "detectionName"}, "127.0.0.1", 123)
         if not expected_section_title:
-            assert client.parse_scan_result(
-                http_result, av_name, [], version, {}, {}, []) == []
+            assert client.parse_scan_result(http_result, av_name, [], version, {}, {}, []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             if expected_heuristic:
@@ -557,8 +659,7 @@ class TestHttpHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_section = client.parse_scan_result(
-                http_result, av_name, ["HEUR:"], version, {}, {}, [])
+            test_result_section = client.parse_scan_result(http_result, av_name, ["HEUR:"], version, {}, {}, [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
 
@@ -600,7 +701,11 @@ class TestAntiVirus:
                 update_period=host["update_period"],
                 file_size_limit=host.get("file_size_limit", 0),
                 heuristic_analysis_keys=product.get("heuristic_analysis_keys"),
-                scan_details=host.get("scan_details")) for product in products for host in product["hosts"]]
+                scan_details=host.get("scan_details"),
+            )
+            for product in products
+            for host in product["hosts"]
+        ]
         antivirus_class_instance.start()
         assert antivirus_class_instance.hosts == correct_hosts
         assert antivirus_class_instance.sleep_time == 60
@@ -646,8 +751,20 @@ class TestAntiVirus:
 
     @staticmethod
     def test_get_hosts():
-        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "scan_details": {
-            "virus_name_header": "blah", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
+        products = [
+            {
+                "product": "blah",
+                "hosts": [
+                    {
+                        "ip": "localhost",
+                        "port": 1344,
+                        "scan_details": {"virus_name_header": "blah", "scan_endpoint": "resp"},
+                        "method": "icap",
+                        "update_period": 100,
+                    }
+                ],
+            }
+        ]
         correct_hosts = [
             AntiVirusHost(
                 product["product"],
@@ -655,12 +772,39 @@ class TestAntiVirus:
                 host["port"],
                 host["method"],
                 host["update_period"],
-                scan_details=host["scan_details"])
-            for product in products for host in product["hosts"]]
+                scan_details=host["scan_details"],
+            )
+            for product in products
+            for host in product["hosts"]
+        ]
         assert AntiVirus._get_hosts(products) == correct_hosts
 
-        products = [{"product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}, {
-            "product": "blah", "hosts": [{"ip": "localhost", "port": 1344, "scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"}, "method": "icap", "update_period": 100}]}]
+        products = [
+            {
+                "product": "blah",
+                "hosts": [
+                    {
+                        "ip": "localhost",
+                        "port": 1344,
+                        "scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"},
+                        "method": "icap",
+                        "update_period": 100,
+                    }
+                ],
+            },
+            {
+                "product": "blah",
+                "hosts": [
+                    {
+                        "ip": "localhost",
+                        "port": 1344,
+                        "scan_details": {"version_endpoint": "version", "scan_endpoint": "resp"},
+                        "method": "icap",
+                        "update_period": 100,
+                    }
+                ],
+            },
+        ]
         with pytest.raises(ValueError):
             AntiVirus._get_hosts(products)
 
@@ -684,31 +828,56 @@ class TestAntiVirus:
         mocker.patch.object(IcapClient, "scan_data", return_value=b"blah")
         mocker.patch.object(IcapClient, "options_respmod", return_value=b"blah")
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (b"blah", "blah", av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (
+            b"blah",
+            "blah",
+            av_host_icap,
+        )
 
         av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100, scan_details={"no_version": True})
-        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (b"blah", None, av_host_icap)
+        assert antivirus_class_instance._scan_file(av_host_icap, "blah", BytesIO(b"blah")) == (
+            b"blah",
+            None,
+            av_host_icap,
+        )
 
         mocker.patch.object(Session, "get", return_value=dummy_requests_class_instance("blah"))
         mocker.patch.object(Session, "post", return_value=dummy_requests_class_instance("blah"))
         av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100)
-        assert antivirus_class_instance._scan_file(av_host_http, "blah", BytesIO(b"blah")) == (b"blah", None, av_host_http)
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", BytesIO(b"blah")) == (
+            b"blah",
+            None,
+            av_host_http,
+        )
 
-        av_host_http = antivirushost_class("blah", "blah", 1234, "http", 100,
-                                           scan_details={"base64_encode": True, "version_endpoint": "blah",
-                                                         "post_data_type": "json",
-                                                         "result_in_headers": True})
-        assert antivirus_class_instance._scan_file(
-            av_host_http, "blah", BytesIO(b"blah")) == (
-            b'{"Via": "(blah)"}', "blah", av_host_http)
+        av_host_http = antivirushost_class(
+            "blah",
+            "blah",
+            1234,
+            "http",
+            100,
+            scan_details={
+                "base64_encode": True,
+                "version_endpoint": "blah",
+                "post_data_type": "json",
+                "result_in_headers": True,
+            },
+        )
+        assert antivirus_class_instance._scan_file(av_host_http, "blah", BytesIO(b"blah")) == (
+            b'{"Via": "(blah)"}',
+            "blah",
+            av_host_http,
+        )
 
         with mocker.patch.object(IcapClient, "scan_data", side_effect=timeout):
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
             assert av_host_icap.sleeping is False
             antivirus_class_instance.sleep_time = 2
-            assert antivirus_class_instance._scan_file(
-                av_host_icap, "blah", b"blah") == (
-                ERROR_RESULT, "blah", av_host_icap)
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (
+                ERROR_RESULT,
+                "blah",
+                av_host_icap,
+            )
             assert av_host_icap.sleeping is True
             sleep(3)
             assert av_host_icap.sleeping is False
@@ -718,9 +887,11 @@ class TestAntiVirus:
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
             assert av_host_icap.sleeping is False
             antivirus_class_instance.sleep_time = 2
-            assert antivirus_class_instance._scan_file(
-                av_host_icap, "blah", b"blah") == (
-                ERROR_RESULT, None, av_host_icap)
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == (
+                ERROR_RESULT,
+                None,
+                av_host_icap,
+            )
             assert av_host_icap.sleeping is True
             sleep(3)
             assert av_host_icap.sleeping is False
@@ -729,14 +900,17 @@ class TestAntiVirus:
         mocker.patch.object(IcapClient, "scan_data", return_value="blah")
         with mocker.patch.object(IcapClient, "options_respmod", side_effect=Exception("blah")):
             av_host_icap = antivirushost_class("blah", "blah", 1234, "icap", 100)
-            assert antivirus_class_instance._scan_file(
-                av_host_icap, "blah", b"blah") == (
-                'blah', None, av_host_icap)
+            assert antivirus_class_instance._scan_file(av_host_icap, "blah", b"blah") == ("blah", None, av_host_icap)
             assert av_host_icap.sleeping is False
 
     @staticmethod
     def test_gather_results(dummy_result_class_instance):
-        hosts = [AntiVirusHost("blah1", "blah", 1234, "icap", 1), AntiVirusHost("blah2", "blah", 1234, "icap", 1), AntiVirusHost("blah3", "blah", 1234, "icap", 1), AntiVirusHost("blah4", "blah", 1234, "icap", 1)]
+        hosts = [
+            AntiVirusHost("blah1", "blah", 1234, "icap", 1),
+            AntiVirusHost("blah2", "blah", 1234, "icap", 1),
+            AntiVirusHost("blah3", "blah", 1234, "icap", 1),
+            AntiVirusHost("blah4", "blah", 1234, "icap", 1),
+        ]
         AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
 
@@ -744,11 +918,14 @@ class TestAntiVirus:
         AntiVirus._gather_results(hosts, [], ["blah1"], dummy_result_class_instance)
         no_result_section = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section.set_body(
-            json.dumps(dict(
-                no_threat_detected=["blah2", "blah3", "blah4"],
-                errors_during_scanning=["blah1"],
-            )),
-            BODY_FORMAT.KEY_VALUE)
+            json.dumps(
+                dict(
+                    no_threat_detected=["blah2", "blah3", "blah4"],
+                    errors_during_scanning=["blah1"],
+                )
+            ),
+            BODY_FORMAT.KEY_VALUE,
+        )
         assert check_section_equality(dummy_result_class_instance.sections[0], no_result_section)
 
         # Triple host scan error, no hits
@@ -759,8 +936,8 @@ class TestAntiVirus:
         AntiVirus._gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
         no_result_section2 = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section2.set_body(
-            json.dumps(dict(no_threat_detected=["blah1", "blah3", "blah4"])),
-            BODY_FORMAT.KEY_VALUE)
+            json.dumps(dict(no_threat_detected=["blah1", "blah3", "blah4"])), BODY_FORMAT.KEY_VALUE
+        )
         assert check_section_equality(dummy_result_class_instance.sections[1], correct_av_result_section)
         assert check_section_equality(dummy_result_class_instance.sections[2], no_result_section2)
 
@@ -774,7 +951,7 @@ class TestAntiVirus:
         av_host2 = AntiVirusHost("blah", "blah", 1, "icap", 60)
         AntiVirus._determine_service_context(service_request, [av_host1, av_host2])
         epoch_time = int(time())
-        floor_of_epoch_multiples = floor(epoch_time/(30*60))
+        floor_of_epoch_multiples = floor(epoch_time / (30 * 60))
         lower_range = floor_of_epoch_multiples * 30 * 60
         upper_range = lower_range + 30 * 60
         lower_range_date = epoch_to_local(lower_range)
@@ -789,8 +966,13 @@ class TestAntiVirus:
         correct_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         additional_av_host = AntiVirusHost("blah3", "blah", 1, "icap", 1)
         av_host_with_file_size_limit = AntiVirusHost("blah3", "blah", 1, "icap", 1, file_size_limit=30000000)
-        hosts = [different_group_av_host, sleeping_av_host, correct_av_host,
-                 additional_av_host, av_host_with_file_size_limit]
+        hosts = [
+            different_group_av_host,
+            sleeping_av_host,
+            correct_av_host,
+            additional_av_host,
+            av_host_with_file_size_limit,
+        ]
         file_size = 50000000
         actual_hosts = AntiVirus._determine_hosts_to_use(hosts, file_size)
         assert different_group_av_host in actual_hosts
@@ -811,7 +993,7 @@ class TestAntiVirus:
             (600, 16000000, 171),
             (300, 6000000, 90),
             (600, 6000000, 108),
-        ]
+        ],
     )
     def test_determine_scan_timeout_by_size(max_service_timeout, file_size, expected_result):
         assert AntiVirus._determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result
@@ -823,25 +1005,50 @@ class TestAntiVirus:
         no_result_section = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section.set_item("errors_during_scanning", ["a", "b"])
         no_result_section.set_item("no_threat_detected", ["c", "d"])
-        assert AntiVirus._preprocess_ontological_result(
-            [hit_1_sec, hit_2_sec, no_result_section]) == [{
-                'engine_name': 'blah', 'engine_version': 'blah', 'engine_definition_version': None,
-                'category': 'malicious', 'virus_name': 'blah'},
+        assert AntiVirus._preprocess_ontological_result([hit_1_sec, hit_2_sec, no_result_section]) == [
             {
-                'engine_name': 'blahblah', 'engine_version': ';:abc=', 'engine_definition_version': 'blah',
-                'category': 'suspicious', 'virus_name': 'bad'},
+                "engine_name": "blah",
+                "engine_version": "blah",
+                "engine_definition_version": None,
+                "category": "malicious",
+                "virus_name": "blah",
+            },
             {
-                'engine_name': 'a', 'engine_version': None, 'engine_definition_version': None,
-                'category': 'failure', 'virus_name': None},
+                "engine_name": "blahblah",
+                "engine_version": ";:abc=",
+                "engine_definition_version": "blah",
+                "category": "suspicious",
+                "virus_name": "bad",
+            },
             {
-                'engine_name': 'b', 'engine_version': None, 'engine_definition_version': None,
-                'category': 'failure', 'virus_name': None},
+                "engine_name": "a",
+                "engine_version": None,
+                "engine_definition_version": None,
+                "category": "failure",
+                "virus_name": None,
+            },
             {
-                'engine_name': 'c', 'engine_version': None, 'engine_definition_version': None,
-                'category': 'undetected', 'virus_name': None},
+                "engine_name": "b",
+                "engine_version": None,
+                "engine_definition_version": None,
+                "category": "failure",
+                "virus_name": None,
+            },
             {
-                'engine_name': 'd', 'engine_version': None, 'engine_definition_version': None,
-                'category': 'undetected', 'virus_name': None}]
+                "engine_name": "c",
+                "engine_version": None,
+                "engine_definition_version": None,
+                "category": "undetected",
+                "virus_name": None,
+            },
+            {
+                "engine_name": "d",
+                "engine_version": None,
+                "engine_definition_version": None,
+                "category": "undetected",
+                "virus_name": None,
+            },
+        ]
 
 
 null_prefix_sample = b"""ICAP/1.0 200 Ok
@@ -852,22 +1059,22 @@ X-FSecure-Infection-Name: BadThing/Oh.Boy
 def test_icap_null_prefixed_header():
     """Test what happens if you include : at the end of the header name"""
     # Without the extra :
-    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name"}, ip="", port=10000)
     result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+    assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
     # With the extra :
-    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name:"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name:"}, ip="", port=10000)
     result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+    assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
     # Try some wrong caps too because header names should be case insensitive
-    host = IcapHostClient({"virus_name_header": "X-fsecure-infection-name:"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-fsecure-infection-name:"}, ip="", port=10000)
     result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BadThing/Oh.Boy']
+    assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
 
 prefix_sample_a = b"""ICAP/1.0 200 Ok
@@ -884,23 +1091,23 @@ X-Infection-Found: Type=10; Resolution=2; THREAT BigBad/Wolf
 
 
 def test_icap_prefixed_header():
-    host = IcapHostClient({"virus_name_header": "X-Infection-Found: Type=0; Resolution=0; Threat"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-Infection-Found: Type=0; Resolution=0; Threat"}, ip="", port=10000)
     result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
     result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
     assert len(result) == 0
 
     # Name is case insensitive
-    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; Threat"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; Threat"}, ip="", port=10000)
     result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
     result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
     assert len(result) == 0
 
     # header content is case sensitive
-    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; THREAT"}, ip='', port=10000)
+    host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; THREAT"}, ip="", port=10000)
     result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
     assert len(result) == 0
     result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
@@ -909,13 +1116,13 @@ def test_icap_prefixed_header():
 
 def test_icap_regex_header():
     config = {"virus_name_header": "X-Infection-Found: i/Type=[0-9]+; Resolution=[0-9]+; Threat (.*)/"}
-    host = IcapHostClient(config, ip='', port=10000)
+    host = IcapHostClient(config, ip="", port=10000)
     result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
     result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
     result = host.parse_scan_result(prefix_sample_c, "test", [], None, {}, {}, [])
     assert len(result) == 1
-    assert result[0].tags['av.virus_name'] == ['BigBad/Wolf']
+    assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
