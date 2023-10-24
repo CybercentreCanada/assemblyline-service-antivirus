@@ -734,7 +734,7 @@ class TestAntiVirus:
         # For coverage
         service_request.task.deep_scan = True
         mocker.patch.object(AntiVirus, "_thr_process_file")
-        mocker.patch.object(AntiVirus, "_gather_results")
+        mocker.patch.object(AntiVirus, "gather_results")
 
         # Actually executing the sample
         antivirus_class_instance.execute(service_request)
@@ -777,7 +777,7 @@ class TestAntiVirus:
             for product in products
             for host in product["hosts"]
         ]
-        assert AntiVirus._get_hosts(products) == correct_hosts
+        assert AntiVirus.get_hosts(products) == correct_hosts
 
         products = [
             {
@@ -806,7 +806,7 @@ class TestAntiVirus:
             },
         ]
         with pytest.raises(ValueError):
-            AntiVirus._get_hosts(products)
+            AntiVirus.get_hosts(products)
 
     @staticmethod
     def test_thr_process_file(antivirus_class_instance, mocker):
@@ -911,11 +911,11 @@ class TestAntiVirus:
             AntiVirusHost("blah3", "blah", 1234, "icap", 1),
             AntiVirusHost("blah4", "blah", 1234, "icap", 1),
         ]
-        AntiVirus._gather_results(hosts, [], [], dummy_result_class_instance)
+        AntiVirus.gather_results(hosts, [], [], dummy_result_class_instance)
         assert dummy_result_class_instance.sections == []
 
         # Single host scan error, no hits
-        AntiVirus._gather_results(hosts, [], ["blah1"], dummy_result_class_instance)
+        AntiVirus.gather_results(hosts, [], ["blah1"], dummy_result_class_instance)
         no_result_section = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section.set_body(
             json.dumps(
@@ -930,10 +930,10 @@ class TestAntiVirus:
 
         # Triple host scan error, no hits
         with pytest.raises(NonRecoverableError):
-            AntiVirus._gather_results(hosts, [], ["blah1", "blah2", "blah4"], dummy_result_class_instance)
+            AntiVirus.gather_results(hosts, [], ["blah1", "blah2", "blah4"], dummy_result_class_instance)
 
         correct_av_result_section = AvHitSection("blah2", "blah", "blah", {}, 1, {}, {}, [])
-        AntiVirus._gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
+        AntiVirus.gather_results(hosts, [correct_av_result_section], [], dummy_result_class_instance)
         no_result_section2 = ResultSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section2.set_body(
             json.dumps(dict(no_threat_detected=["blah1", "blah3", "blah4"])), BODY_FORMAT.KEY_VALUE
@@ -949,7 +949,7 @@ class TestAntiVirus:
         service_request = ServiceRequest(task)
         av_host1 = AntiVirusHost("blah", "blah", 1, "icap", 30)
         av_host2 = AntiVirusHost("blah", "blah", 1, "icap", 60)
-        AntiVirus._determine_service_context(service_request, [av_host1, av_host2])
+        AntiVirus.determine_service_context(service_request, [av_host1, av_host2])
         epoch_time = int(time())
         floor_of_epoch_multiples = floor(epoch_time / (30 * 60))
         lower_range = floor_of_epoch_multiples * 30 * 60
@@ -996,7 +996,7 @@ class TestAntiVirus:
         ],
     )
     def test_determine_scan_timeout_by_size(max_service_timeout, file_size, expected_result):
-        assert AntiVirus._determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result
+        assert AntiVirus.determine_scan_timeout_by_size(max_service_timeout, file_size) == expected_result
 
     @staticmethod
     def test_preprocess_ontological_result():
@@ -1005,7 +1005,7 @@ class TestAntiVirus:
         no_result_section = ResultKeyValueSection("Failed to Scan or No Threat Detected by AV Engine(s)")
         no_result_section.set_item("errors_during_scanning", ["a", "b"])
         no_result_section.set_item("no_threat_detected", ["c", "d"])
-        assert AntiVirus._preprocess_ontological_result([hit_1_sec, hit_2_sec, no_result_section]) == [
+        assert AntiVirus.preprocess_ontological_result([hit_1_sec, hit_2_sec, no_result_section]) == [
             {
                 "engine_name": "blah",
                 "engine_version": "blah",
