@@ -355,7 +355,7 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             virus_names = {virus_name}
         for virus_name in virus_names:
             av_hits.append(
-                AntiVirus._handle_virus_hit_section(
+                AntiVirus.handle_virus_hit_section(
                     av_name,
                     av_version,
                     virus_name,
@@ -695,7 +695,7 @@ class AntiVirus(ServiceBase):
                 "variable in the service configurations."
             )
         self.log.debug("Creating the host objects based on the provided product configurations")
-        self.hosts = self._get_hosts(products)
+        self.hosts = self.get_hosts(products)
         if len(self.hosts) < 1:
             raise ValueError(
                 "There does not appear to be any hosts loaded in the 'products' config "
@@ -722,7 +722,7 @@ class AntiVirus(ServiceBase):
         request.result = Result()
         max_workers = len(self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the service context.")
-        AntiVirus._determine_service_context(request, self.hosts)
+        AntiVirus.determine_service_context(request, self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
         file_size = getsize(request.file_path)
         selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts, file_size)
@@ -731,7 +731,7 @@ class AntiVirus(ServiceBase):
             self.log.warning(f"[{request.sid}/{request.sha256}] {message}")
             raise RecoverableError(message)
 
-        scan_timeout = AntiVirus._determine_scan_timeout_by_size(self.service_attributes.timeout, file_size)
+        scan_timeout = AntiVirus.determine_scan_timeout_by_size(self.service_attributes.timeout, file_size)
         self.log.debug(
             f"[{request.sid}/{request.sha256}] Using the ThreadPoolExecutor to submit tasks to the thread pool"
         )
@@ -794,8 +794,8 @@ class AntiVirus(ServiceBase):
             f"[{request.sid}/{request.sha256}] Adding the {len(self.av_hit_result_sections)} AV hit "
             "result sections to the Result"
         )
-        AntiVirus._gather_results(selected_hosts, self.av_hit_result_sections, self.av_errors, request.result)
-        data = AntiVirus._preprocess_ontological_result(request.result.sections)
+        AntiVirus.gather_results(selected_hosts, self.av_hit_result_sections, self.av_errors, request.result)
+        data = AntiVirus.preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
@@ -807,7 +807,7 @@ class AntiVirus(ServiceBase):
                 host.host_client.close()
 
     @staticmethod
-    def _get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
+    def get_hosts(products: List[Dict[str, Any]]) -> List[AntiVirusHost]:
         """
         This method creates a list of AntiVirusHost class instances for each entry in the
         service_manifest.yaml
@@ -929,7 +929,7 @@ class AntiVirus(ServiceBase):
         return results, version, host
 
     @staticmethod
-    def _handle_virus_hit_section(
+    def handle_virus_hit_section(
         av_name: str,
         av_version: Optional[str],
         virus_name: str,
@@ -966,7 +966,7 @@ class AntiVirus(ServiceBase):
             )
 
     @staticmethod
-    def _gather_results(
+    def gather_results(
         hosts: List[AntiVirusHost], hit_result_sections: List[AvHitSection], av_errors: List[str], result: Result
     ) -> None:
         """
@@ -1006,7 +1006,7 @@ class AntiVirus(ServiceBase):
             result.add_section(no_threat_sec)
 
     @staticmethod
-    def _determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
+    def determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
         """
         This method determines the service context based on the following logic:
         Since we are not able to get the definition times via AV products, we will use the user-provided
@@ -1053,7 +1053,7 @@ class AntiVirus(ServiceBase):
         return selected_hosts
 
     @staticmethod
-    def _determine_scan_timeout_by_size(max_service_timeout: int, file_size: int) -> int:
+    def determine_scan_timeout_by_size(max_service_timeout: int, file_size: int) -> int:
         """
         This method determines the appropriate time to wait to scan a file based on its size
         :param max_service_timeout: the maximum time that we have to scan a file
@@ -1075,7 +1075,7 @@ class AntiVirus(ServiceBase):
         return suggested_scan_timeout
 
     @staticmethod
-    def _preprocess_ontological_result(sections: List[ResultKeyValueSection]) -> Dict[str, Any]:
+    def preprocess_ontological_result(sections: List[ResultKeyValueSection]) -> Dict[str, Any]:
         detections = []
         for section in sections:
             detection = {
@@ -1085,7 +1085,7 @@ class AntiVirus(ServiceBase):
                 "category": None,
                 "virus_name": None,
             }
-            details = section.section_body._data
+            details = json.loads(section.section_body.body)
             if "errors_during_scanning" in details:
                 for host in details["errors_during_scanning"]:
                     failed_detection = deepcopy(detection)
