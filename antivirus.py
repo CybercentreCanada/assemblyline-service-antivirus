@@ -725,7 +725,7 @@ class AntiVirus(ServiceBase):
         AntiVirus.determine_service_context(request, self.hosts)
         self.log.debug(f"[{request.sid}/{request.sha256}] Determining the hosts to use.")
         file_size = getsize(request.file_path)
-        selected_hosts = AntiVirus._determine_hosts_to_use(self.hosts, file_size)
+        selected_hosts = AntiVirus.determine_hosts_to_use(self.hosts, file_size)
         if not selected_hosts:
             message = "All hosts are unavailable!"
             self.log.warning(f"[{request.sid}/{request.sha256}] {message}")
@@ -1026,7 +1026,7 @@ class AntiVirus(ServiceBase):
         )
 
     @staticmethod
-    def _determine_hosts_to_use(hosts: List[AntiVirusHost], file_size: int) -> List[AntiVirusHost]:
+    def determine_hosts_to_use(hosts: List[AntiVirusHost], file_size: int) -> List[AntiVirusHost]:
         """
         This method takes a list of hosts, and determines which hosts are going to have files sent to them
         :param hosts: the list of antivirus hosts registered in the service
