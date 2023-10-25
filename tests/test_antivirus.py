@@ -974,7 +974,7 @@ class TestAntiVirus:
             av_host_with_file_size_limit,
         ]
         file_size = 50000000
-        actual_hosts = AntiVirus._determine_hosts_to_use(hosts, file_size)
+        actual_hosts = AntiVirus.determine_hosts_to_use(hosts, file_size)
         assert different_group_av_host in actual_hosts
         assert any(host in actual_hosts for host in [correct_av_host, additional_av_host])
 
