@@ -24,10 +24,11 @@ from antivirus import (
 from assemblyline.common.exceptions import NonRecoverableError
 from assemblyline.common.isotime import epoch_to_local
 from assemblyline.odm.messages.task import Task as ServiceTask
+from assemblyline.odm.models.result import BODY_FORMAT
 from assemblyline_service_utilities.common.icap import IcapClient
 from assemblyline_service_utilities.testing.helper import check_section_equality
 from assemblyline_v4_service.common.request import ServiceRequest
-from assemblyline_v4_service.common.result import BODY_FORMAT, ResultKeyValueSection, ResultSection
+from assemblyline_v4_service.common.result import ResultKeyValueSection, ResultSection
 from assemblyline_v4_service.common.task import Task
 from requests import Session
 from requests.sessions import Session
