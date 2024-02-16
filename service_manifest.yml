@@ -15,6 +15,7 @@ disable_cache: false
 enabled: false
 is_external: false
 licence_count: 0
+privileged: true
 
 config:
   av_config:
@@ -67,4 +68,5 @@ heuristics:
 docker_config:
   image: ${REGISTRY}cccs/assemblyline-service-antivirus:$SERVICE_TAG
   cpu_cores: 0.25
+  ram_mb: 2048
   allow_internet_access: true
