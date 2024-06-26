@@ -152,7 +152,7 @@ av_config:
 - `no_version`: A boolean indicating if a product version will be returned if you query OPTIONS.
 - `version_header`: The name of the header of the line in the version results that contains the antivirus engine version.
 - `check_body_for_headers`: A boolean indicating if the ICAP response body could contain important headers.
-- `no_status_line_in_headers`: A boolean indicating if the ICAP response body does not contain the standard status header such as 'ICAP/1.0 200 BLOCKED'
+- `no_status_line_in_header`: A boolean indicating if the ICAP response body does not contain the standard status header such as 'ICAP/1.0 200 BLOCKED'
 
 #### HTTP
 - `virus_name_header`: The name of the header of the line in the results that contains the antivirus hit name. Example of a line in the results (either in the response headers or body): `X-Virus-ID: <some-signature-here>`. The `virus_name_header` would be `X-Virus-ID`.
