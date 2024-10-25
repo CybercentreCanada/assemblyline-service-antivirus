@@ -29,7 +29,7 @@ resources:
 extends:
   template: stages/deploy-service.yaml@PipelineTemplates
   parameters:
-    is_public: "false"
+    is_public: "true"
     samples_repo: unittest-samples
     labels:
       classification: "UNCLASSIFIED"

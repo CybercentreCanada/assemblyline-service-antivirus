@@ -6,7 +6,7 @@
     "cookiecutter": {
       "__directory_name": "pipelines",
       "classification": "UNCLASSIFIED",
-      "is_public": false,
+      "is_public": true,
       "test_in_container": true,
       "test_versions": "default",
       "timeout": "default",
