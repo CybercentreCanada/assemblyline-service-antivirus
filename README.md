@@ -65,7 +65,7 @@ av_config:
           file_size_limit: 30000000
           scan_details:
             scan_endpoint: "resp"
-            no_status_line_in_header: true
+            no_status_line_in_headers: true
 
         # HTTP host
         - ip: "<ip>"
