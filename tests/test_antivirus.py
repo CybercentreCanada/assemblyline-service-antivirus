@@ -9,7 +9,7 @@ from threading import Thread
 from time import sleep, time
 
 import pytest
-from antivirus import (
+from antivirus.antivirus import (
     ERROR_RESULT,
     AntiVirus,
     AntiVirusHost,
