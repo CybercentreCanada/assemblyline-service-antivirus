@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/CybercentreCanada/assemblyline-service-template.git",
-  "commit": "6a32666117e30dbfb990bfaf6e7c9eb25badd03a",
+  "commit": "99becf8ed2990a4063a5bb1f8ce878824a5a1a7b",
   "checkout": null,
   "context": {
     "cookiecutter": {
@@ -8,15 +8,15 @@
       "__svc_name": "antivirus",
       "__repository": "assemblyline-service-antivirus",
       "__pkg_name": "antivirus",
+      "class_name": "AntiVirus",
       "short_description": "This service provides integration of various anti-virus products with the Assemblyline platform.",
-      "short_description_fr": "Ce service assure l'int\u00e9gration de divers produits anti-virus \u00e0 la plateforme Assemblyline.",
+      "short_description_fr": "Ce service assure l'intégration de divers produits anti-virus à la plateforme Assemblyline.",
       "stage": "CORE",
       "category": "Antivirus",
       "org_name_full": "CybercentreCanada",
       "org_name_short": "cccs",
       "license": "mit",
-      "_template": "https://github.com/CybercentreCanada/assemblyline-service-template.git",
-      "class_name": "AntiVirus"
+      "_template": "https://github.com/CybercentreCanada/assemblyline-service-template.git"
     }
   },
   "directory": null
