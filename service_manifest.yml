@@ -1,20 +1,25 @@
 name: AntiVirus
 version: $SERVICE_TAG
-description: This service facilitates the dispatching and result-parsing to multiple antivirus products.
+description: This service provides integration of various anti-virus products with the Assemblyline platform.
 
+# Regex defining the types of files the service accepts and rejects
 accepts: .*
 rejects: empty|metadata/iccprofile
 
+# At which stage the service should run (one of FILTER, EXTRACT, CORE, SECONDARY, POST, REVIEW)
+# NOTE: Stages are executed in the order defined in the list
 stage: CORE
+# Which category the service is part of (one of Antivirus, Dynamic Analysis, External, Extraction, Filtering, Internet Connected, Networking, Static Analysis)
 category: Antivirus
 
+# Does the service require access to the file to perform its task
+# If set to false, the service will only have access to the file metadata (e.g. Hashes, size, type, ...)
 file_required: true
+# Maximum execution time the service has before it's considered to be timed out
 timeout: 120
-disable_cache: false
 
+# is the service enabled by default
 enabled: false
-is_external: false
-licence_count: 0
 privileged: true
 
 config:
@@ -57,7 +62,7 @@ heuristics:
     name: File is infected
     score: 1000
     filetype: '*'
-    description: Antivirus hit.
+    description: AntiVirus hit.
 
   - heur_id: 2
     name: File is suspicious
