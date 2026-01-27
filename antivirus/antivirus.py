@@ -22,6 +22,8 @@ from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runt
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
 from requests import Session
+from dataclasses import dataclass
+from collections.abc import Iterable
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
@@ -42,6 +44,13 @@ NO_AV_PROVIDED = "Unknown"
 # Generic ICAP response text indicating a virus was found
 VIRUS_FOUND = "VirusFound"
 DEFAULT_MERCY_LIMIT = 5
+
+
+@dataclass(frozen=True)
+class AvHit:
+    av_name: str
+    av_version: Optional[str]
+    virus_name: str
 
 
 class AvHitSection(ResultKeyValueSection):
@@ -167,24 +176,13 @@ class HostClient(ABC, Generic[DetailType]):
         self,
         av_results: bytes,
         av_name: str,
-        heuristic_analysis_keys: List[str],
-        av_version: Optional[str],
-        sig_score_revision_map: Dict[str, int],
-        kw_score_revision_map: Dict[str, int],
-        safelist_match: List[str],
-    ) -> List[AvHitSection]:
+        av_version: Optional[str]
+    ) -> Iterable[AvHit]:
         """
         This method sends the results to the appropriate parser based on the method
         :param av_results: The results of scanning the file
         :param av_name: The name of the antivirus product
-        :param virus_name_header: The name of the header of the line in the results that contains the antivirus hit name
-        :param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
-        :                               indicate that heuristic analysis caused the signature to be raised
         :param av_version: A string detailing the version of the antivirus product, if applicable
-        :param sig_score_revision_map: A dictionary containing non-safelisted signature names that have a revised score
-        :param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
-        :                             to all signatures containing any of these keywords
-        :param safelist_match: A list of antivirus vendor virus names that are determined to be safe
         :return: A list of AvHitSections detailing the results of the scan, if applicable
         """
         raise NotImplementedError()
@@ -296,14 +294,9 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         self,
         av_results: bytes,
         av_name: str,
-        heuristic_analysis_keys: List[str],
-        av_version: Optional[str],
-        sig_score_revision_map: Dict[str, int],
-        kw_score_revision_map: Dict[str, int],
-        safelist_match: List[str],
-    ) -> List[AvHitSection]:
+        av_version: Optional[str]
+    ) -> Iterable[AvHit]:
         virus_name: Optional[str] = None
-        av_hits: list[AvHitSection] = []
 
         try:
             _status_code, _status_message, headers = self.client.parse_headers(
@@ -340,7 +333,7 @@ class IcapHostClient(HostClient[IcapScanDetails]):
                 virus_name = NO_AV_PROVIDED
 
         if not virus_name:
-            return av_hits
+            return
 
         if all(char in CHARS_TO_STRIP for char in virus_name):
             virus_name = NO_AV_PROVIDED
@@ -353,19 +346,11 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             virus_names = {vname.strip() for vname in virus_name.split(" ")}
         else:
             virus_names = {virus_name}
-        for virus_name in virus_names:
-            av_hits.append(
-                AntiVirus.handle_virus_hit_section(
-                    av_name,
-                    av_version,
-                    virus_name,
-                    heuristic_analysis_keys,
-                    sig_score_revision_map,
-                    kw_score_revision_map,
-                    safelist_match,
-                )
-            )
-        return av_hits
+
+        return (
+            AvHit(av_name, av_version, v)
+            for v in virus_names
+        )
 
     def close(self) -> None:
         """
@@ -507,64 +492,34 @@ class HttpHostClient(HostClient[HttpScanDetails]):
         self,
         av_results: bytes,
         av_name: str,
-        heuristic_analysis_keys: List[str],
-        av_version: Optional[str],
-        sig_score_revision_map: Dict[str, int],
-        kw_score_revision_map: Dict[str, int],
-        safelist_match: List[str],
-    ) -> List[AvHitSection]:
+        av_version: Optional[str]
+    ) -> Iterable[AvHit]:
         http_results_as_json = json.loads(av_results)
         av_hits = []
         virus_name_header = self.scan_details.virus_name_header
         product_name = av_name
-        if http_results_as_json.get(virus_name_header):
-            virus_name = http_results_as_json[virus_name_header]
-            # If there is more than one signature returned, let's grab all of them
-            # The assumption here is that antivirus providers will
-            # return a virus name of the format <str> or <str>,<str>,...
-            virus_names = virus_name.split(",")
-            for virus_name in virus_names:
-                virus_name = virus_name.strip()
-                # The assumption here is that antivirus providers will return a
-                # virus name of the format <av_name>:<virus_name>
-                temp_av_name = None
-                heur_analysis = False
-                if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
-                    heur_analysis = True
-                    for heuristic_analysis_key in heuristic_analysis_keys:
-                        virus_name = virus_name.replace(heuristic_analysis_key, "")
-                if ":" in virus_name:
-                    temp_av_name, virus_name = virus_name.split(":")
-                    temp_av_name = temp_av_name.strip()
-                    virus_name = virus_name.strip()
-                av_name = temp_av_name if temp_av_name else product_name
-                if heur_analysis:
-                    av_hits.append(
-                        AvHitSection(
-                            av_name,
-                            av_version,
-                            virus_name,
-                            {},
-                            2,
-                            sig_score_revision_map,
-                            kw_score_revision_map,
-                            safelist_match,
-                        )
-                    )
-                else:
-                    av_hits.append(
-                        AvHitSection(
-                            av_name,
-                            av_version,
-                            virus_name,
-                            {},
-                            1,
-                            sig_score_revision_map,
-                            kw_score_revision_map,
-                            safelist_match,
-                        )
-                    )
-        return av_hits
+
+        if not http_results_as_json.get(virus_name_header):
+            return
+
+        raw_virus_name = http_results_as_json[virus_name_header]
+
+        # If there is more than one signature returned, let's grab all of them
+        # The assumption here is that antivirus providers will
+        # return a virus name of the format <str> or <str>,<str>,...
+        for virus_name in raw_virus_name.split(","):
+            source_vendor = av_name
+
+            # The assumption here is that antivirus providers will return a
+            # virus name of the format <av_name>:<virus_name>
+            if ":" in virus_name:
+                source_vendor, virus_name = virus_name.split(":")
+
+            yield AvHit(
+                source_vendor.strip(),
+                av_version,
+                virus_name.strip()
+            )
 
 
 class AntiVirusHost:
@@ -857,6 +812,7 @@ class AntiVirus(ServiceBase):
         av_version = host.host_client.parse_version(
             version, getattr(host.host_client.scan_details, "version_header", None)
         )
+
         if result == ERROR_RESULT:
             self.av_errors.append(host.group)
             av_hits = []
@@ -871,11 +827,7 @@ class AntiVirus(ServiceBase):
             av_hits = host.host_client.parse_scan_result(
                 av_results=result,
                 av_name=host.group,
-                heuristic_analysis_keys=host.heuristic_analysis_keys,
                 av_version=av_version,
-                sig_score_revision_map=self.sig_score_revision_map,
-                kw_score_revision_map=self.kw_score_revision_map,
-                safelist_match=self.safelist_match,
             )
         else:
             av_hits = []
@@ -886,9 +838,18 @@ class AntiVirus(ServiceBase):
             f"Time elapsed for parsing: {elapsed_parse_time}s"
         )
 
-        # Step 3: Add parsed results to result section lists
-        for av_hit in av_hits:
-            self.av_hit_result_sections.append(av_hit)
+        self.av_hit_result_sections += [
+            AntiVirus.handle_virus_hit_section(
+                host.heuristic_analysis_keys,
+                self.sig_score_revision_map,
+                self.kw_score_revision_map,
+                self.safelist_match,
+                h
+            )
+            for h in av_hits
+        ]
+
+        #define_temp_submission_
 
     def _scan_file(
         self, host: AntiVirusHost, file_hash: str, file_contents: io.BufferedIOBase
@@ -930,13 +891,11 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def handle_virus_hit_section(
-        av_name: str,
-        av_version: Optional[str],
-        virus_name: str,
         heuristic_analysis_keys: List[str],
         sig_score_revision_map: Dict[str, int],
         kw_score_revision_map: Dict[str, int],
         safelist_match: List[str],
+        hit: AvHit
     ) -> AvHitSection:
         """
         This method handles the creation of AvHitSections
@@ -951,6 +910,11 @@ class AntiVirus(ServiceBase):
         :param safelist_match: A list of antivirus vendor virus names that are determined to be safe
         :return: None
         """
+
+        virus_name = hit.virus_name
+        av_name = hit.av_name
+        av_version = hit.av_version
+
         heur_analysis = False
         if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
             heur_analysis = True
