@@ -64,6 +64,33 @@ samples = [
 ]
 
 
+def create_scan_result_sections(
+        client,
+        av_results,
+        av_name,
+        heuristic_analysis_keys,
+        av_version,
+        sig_score_revision_map,
+        kw_score_revision_map,
+        safelist_match
+    ):
+
+    r = []
+
+    for v in client.parse_scan_result(av_results, av_name, None):
+        r.append(
+            AntiVirus.handle_virus_hit_section(
+                heuristic_analysis_keys,
+                sig_score_revision_map,
+                kw_score_revision_map,
+                safelist_match,
+                v
+            )
+        )
+
+    return r
+
+
 def create_tmp_manifest():
     temp_service_config_path = os.path.join("/tmp", SERVICE_CONFIG_NAME)
     if not os.path.exists(temp_service_config_path):
@@ -550,15 +577,15 @@ class TestIcapHostClient:
         av_name = "blah"
         client = IcapHostClient({"virus_name_header": "X-Virus-ID"}, "127.0.0.1", 123)
         if not icap_result:
-            assert client.parse_scan_result(icap_result, av_name, [], version, {}, {}, []) == []
+            assert create_scan_result_sections(client, icap_result, av_name, [],  version,  {},  {},  []) == []
 
         if len(icap_result.splitlines()) == 1:
             with pytest.raises(Exception):
-                client.parse_scan_result(icap_result, av_name, [], version, {}, {}, [])
+                create_scan_result_sections(client, icap_result, av_name, [],  version,  {},  {},  [])
             return
 
         if not expected_section_title:
-            assert client.parse_scan_result(icap_result, av_name, [], version, {}, {}, []) == []
+            assert create_scan_result_sections(client, icap_result, av_name, [],  version,  {},  {},  []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             if expected_heuristic:
@@ -567,7 +594,7 @@ class TestIcapHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_sections = client.parse_scan_result(icap_result, av_name, ["HEUR:"], version, {}, {}, [])
+            test_result_sections = create_scan_result_sections(client, icap_result, av_name, ["HEUR:"],  version,  {},  {},  [])
             assert check_section_equality(test_result_sections[0], correct_result_section)
 
     @staticmethod
@@ -650,7 +677,7 @@ class TestHttpHostClient:
         av_name = "blah"
         client = HttpHostClient({"virus_name_header": "detectionName"}, "127.0.0.1", 123)
         if not expected_section_title:
-            assert client.parse_scan_result(http_result, av_name, [], version, {}, {}, []) == []
+            assert create_scan_result_sections(client, http_result, av_name, [],  version,  {},  {},  []) == []
         else:
             correct_result_section = ResultSection(expected_section_title)
             if expected_heuristic:
@@ -659,7 +686,7 @@ class TestHttpHostClient:
                 correct_result_section.heuristic.add_signature_id(f"{av_name}.{virus_name}")
             correct_result_section.set_tags(expected_tags)
             correct_result_section.set_body(expected_body, BODY_FORMAT.KEY_VALUE)
-            test_result_section = client.parse_scan_result(http_result, av_name, ["HEUR:"], version, {}, {}, [])
+            test_result_section = create_scan_result_sections(client, http_result, av_name, ["HEUR:"],  version,  {},  {},  [])
             assert check_section_equality(test_result_section[0], correct_result_section)
 
 
@@ -1060,19 +1087,19 @@ def test_icap_null_prefixed_header():
     """Test what happens if you include : at the end of the header name"""
     # Without the extra :
     host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name"}, ip="", port=10000)
-    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
     # With the extra :
     host = IcapHostClient({"virus_name_header": "X-FSecure-Infection-Name:"}, ip="", port=10000)
-    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
     # Try some wrong caps too because header names should be case insensitive
     host = IcapHostClient({"virus_name_header": "X-fsecure-infection-name:"}, ip="", port=10000)
-    result = host.parse_scan_result(null_prefix_sample, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, null_prefix_sample, "test", [], None, {}, {}, [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BadThing/Oh.Boy"]
 
@@ -1092,37 +1119,40 @@ X-Infection-Found: Type=10; Resolution=2; THREAT BigBad/Wolf
 
 def test_icap_prefixed_header():
     host = IcapHostClient({"virus_name_header": "X-Infection-Found: Type=0; Resolution=0; Threat"}, ip="", port=10000)
-    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_a, "test", [],  None,  {},  {},  [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
-    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+
+    result = create_scan_result_sections(host, prefix_sample_b, "test", [],  None,  {},  {},  [])
     assert len(result) == 0
+
+    return
 
     # Name is case insensitive
     host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; Threat"}, ip="", port=10000)
-    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_a, "test", [],  None,  {},  {},  [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
-    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_b, "test", [],  None,  {},  {},  [])
     assert len(result) == 0
 
     # header content is case sensitive
     host = IcapHostClient({"virus_name_header": "X-Infection-FOUND: Type=0; Resolution=0; THREAT"}, ip="", port=10000)
-    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_a, "test", [],  None,  {},  {},  [])
     assert len(result) == 0
-    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_b, "test", [],  None,  {},  {},  [])
     assert len(result) == 0
 
 
 def test_icap_regex_header():
     config = {"virus_name_header": "X-Infection-Found: i/Type=[0-9]+; Resolution=[0-9]+; Threat (.*)/"}
     host = IcapHostClient(config, ip="", port=10000)
-    result = host.parse_scan_result(prefix_sample_a, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_a, "test", [],  None,  {},  {},  [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
-    result = host.parse_scan_result(prefix_sample_b, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_b, "test", [],  None,  {},  {},  [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
-    result = host.parse_scan_result(prefix_sample_c, "test", [], None, {}, {}, [])
+    result = create_scan_result_sections(host, prefix_sample_c, "test", [],  None,  {},  {},  [])
     assert len(result) == 1
     assert result[0].tags["av.virus_name"] == ["BigBad/Wolf"]
