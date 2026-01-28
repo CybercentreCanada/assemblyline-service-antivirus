@@ -14,6 +14,7 @@ from antivirus.antivirus import (
     AntiVirus,
     AntiVirusHost,
     AvHitSection,
+    AvHit,
     HttpHostClient,
     HttpScanDetails,
     IcapClient,
@@ -846,9 +847,16 @@ class TestAntiVirus:
 
         mocker.patch.object(AntiVirus, "_scan_file", return_value=("blah", "blah", avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value="blah")
-        mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=["blah"])
+        mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=[AvHit("avname_blah", None, "blah")])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert antivirus_class_instance.av_hit_result_sections == ["blah"]
+
+        assert len(antivirus_class_instance.av_hit_result_sections) == 1
+
+        test = antivirus_class_instance.av_hit_result_sections[0]
+
+        assert len(test.tags["av.virus_name"]) == 1
+
+        assert test.tags["av.virus_name"][0] == "blah"
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
