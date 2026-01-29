@@ -351,7 +351,6 @@ class IcapHostClient(HostClient[IcapScanDetails]):
             identified_virus_names = {virus_name}
 
         for virus_name in identified_virus_names:
-            heur_analysis = False
             heurisitc_keys = [h for h in heuristic_analysis_keys if h in virus_name]
 
             for h in heurisitc_keys:
@@ -913,7 +912,6 @@ class AntiVirus(ServiceBase):
         :param hit: A description of the parsed anti-virus hit
         :return: None
         """
-
         return AvHitSection(
             hit.av_name,
             hit.av_version,
