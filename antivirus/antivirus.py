@@ -22,8 +22,10 @@ from assemblyline_v4_service.common.base import ServiceBase, is_recoverable_runt
 from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
 from requests import Session
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Iterable
+from functools import reduce
+from itertools import chain, repeat
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
@@ -52,6 +54,13 @@ class AvHit:
     av_version: Optional[str]
     virus_name: str
     is_heuristic: bool
+
+
+@dataclass
+class AvGroupResult:
+    version: Optional[str]
+    malicious: List[AvHit] = field(default_factory=list)
+    safelist: List[AvHit] = field(default_factory=list)
 
 
 class AvHitSection(ResultKeyValueSection):
@@ -633,7 +642,8 @@ class AntiVirus(ServiceBase):
         self.safelist_match: List[str] = []
         self.kw_score_revision_map: Optional[Dict[str, int]] = None
         self.sig_score_revision_map: Optional[Dict[str, int]] = None
-        self.av_hit_result_sections: List[AvHitSection] = []
+        self.group_results: Dict[str, AvGroupResult] = {}
+
         self.av_errors: List[str] = []
 
         try:
@@ -680,8 +690,8 @@ class AntiVirus(ServiceBase):
     def execute(self, request: ServiceRequest) -> None:
         self.log.debug(f"[{request.sid}/{request.sha256}] Executing the AntiVirus service...")
         # Reset for each request
-        self.av_hit_result_sections = []
         self.av_errors = []
+        self.group_results = {}
 
         request.result = Result()
         max_workers = len(self.hosts)
@@ -750,17 +760,35 @@ class AntiVirus(ServiceBase):
                 raise
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Checking if any virus names should be safelisted")
-        for result_section in self.av_hit_result_sections[:]:
-            if all(virus_name in self.safelist_match for virus_name in result_section.tags["av.virus_name"]):
-                self.av_hit_result_sections.remove(result_section)
+        self._apply_safelist(self.group_results)
+
+        av_hit_result_sections = [
+            AntiVirus.handle_virus_hit_section(
+                self.sig_score_revision_map,
+                self.kw_score_revision_map,
+                self.safelist_match,
+                h
+            )
+            for desc in self.group_results.values()
+            for h in desc.malicious
+        ]
 
         self.log.debug(
-            f"[{request.sid}/{request.sha256}] Adding the {len(self.av_hit_result_sections)} AV hit "
+            f"[{request.sid}/{request.sha256}] Adding the {len(av_hit_result_sections)} AV hit "
             "result sections to the Result"
         )
-        AntiVirus.gather_results(selected_hosts, self.av_hit_result_sections, self.av_errors, request.result)
+        AntiVirus.gather_results(selected_hosts, av_hit_result_sections, self.av_errors, request.result)
+
         data = AntiVirus.preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
+
+        request.temp_submission_data["virus_scan_vt3_file"] = AntiVirus.create_vt3_file_summary(
+            self.group_results,
+            request.md5,
+            request.sha1,
+            request.sha256
+        )
+
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
     def stop(self) -> None:
@@ -804,7 +832,19 @@ class AntiVirus(ServiceBase):
             for host in product["hosts"]
         ]
 
-    def _thr_process_file(self, host: AntiVirusHost, file_hash: str, file_contents: io.BufferedIOBase) -> None:
+    def _apply_safelist(self, groups: Dict[str, AvGroupResult]) -> None:
+        for result in groups.values():
+            for m in result.malicious[:]:
+                if m.virus_name in self.safelist_match:
+                    result.malicious.remove(m)
+                    result.safelist.append(m)
+
+    def _thr_process_file(
+            self,
+            host: AntiVirusHost,
+            file_hash: str,
+            file_contents: io.BufferedIOBase
+        ) -> None:
         """
         This method handles the file scanning and result parsing
         :param host: The class instance representing an antivirus product
@@ -822,8 +862,8 @@ class AntiVirus(ServiceBase):
             version, getattr(host.host_client.scan_details, "version_header", None)
         )
 
-
         av_hits: Iterable[AvHit] = []
+
         if result == ERROR_RESULT:
             self.av_errors.append(host.group)
         # If an empty string is returned, we will treat this like an error
@@ -846,17 +886,10 @@ class AntiVirus(ServiceBase):
             f"Time elapsed for parsing: {elapsed_parse_time}s"
         )
 
-        self.av_hit_result_sections += [
-            AntiVirus.handle_virus_hit_section(
-                self.sig_score_revision_map or {},
-                self.kw_score_revision_map or {},
-                self.safelist_match or [],
-                h
-            )
-            for h in av_hits
-        ]
+        if host.group not in self.group_results:
+            self.group_results[host.group] = AvGroupResult(av_version)
 
-        #define_temp_submission_
+        self.group_results[host.group].malicious += av_hits
 
     def _scan_file(
         self, host: AntiVirusHost, file_hash: str, file_contents: io.BufferedIOBase
@@ -941,6 +974,7 @@ class AntiVirus(ServiceBase):
 
         for result_section in hit_result_sections:
             result.add_section(result_section)
+
         if len(hit_result_sections) < len(hosts):
             host_groups = [host.group for host in hosts]
             no_result_hosts = [
@@ -962,6 +996,51 @@ class AntiVirus(ServiceBase):
             if av_errors:
                 no_threat_sec.set_item("errors_during_scanning", [host for host in av_errors])
             result.add_section(no_threat_sec)
+
+
+    @staticmethod
+    def create_vt3_file_summary(
+        group_results: List[AvGroupResult], md5: str, sha1: str, sha256: str
+    ) -> Dict[str, Any]:
+        """
+        Construct a VT3 File object summarizing detection results.
+        :param malicious: Malicious VT3 file object entries
+        :param clean: Clean VT3 file object entries
+        :return: A VT3 File Object including scan results for all AV Groups.
+        """
+        def define_result(engine: str, version: Optional[str], category: str, virus_name: Optional[str] = None):
+            return {
+                "engine_name": engine,
+                "engine_version": version,
+                "category": category,
+                "result": virus_name
+            }
+
+        combined_results = {}
+
+        for name, g in group_results.items():
+            if not g.malicious and not g.safelist:
+                combined_results[name] = define_result(name, g.version, "undetected")
+                continue
+
+            for h in g.malicious:
+                category = "suspicious" if h.is_heuristic else "malicious"
+                combined_results[h.av_name] = define_result(h.av_name, h.av_version, category, h.virus_name)
+
+            for h in g.safelist:
+                combined_results[h.av_name] = define_result(h.av_name, h.av_version, "undetected")
+
+        return {
+            "data": {
+                "attributes": {
+                    "last_analysis_results": combined_results,
+                    "md5": md5,
+                    "sha1": sha1,
+                    "sha256": sha256
+                }
+            }
+        }
+
 
     @staticmethod
     def determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:
