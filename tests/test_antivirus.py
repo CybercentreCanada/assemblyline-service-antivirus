@@ -75,21 +75,15 @@ def create_scan_result_sections(
         kw_score_revision_map,
         safelist_match
     ):
-
-    r = []
-
-    for v in client.parse_scan_result(av_results, av_name, None):
-        r.append(
-            AntiVirus.handle_virus_hit_section(
-                heuristic_analysis_keys,
-                sig_score_revision_map,
-                kw_score_revision_map,
-                safelist_match,
-                v
-            )
+    return [
+        AntiVirus.handle_virus_hit_section(
+            sig_score_revision_map,
+            kw_score_revision_map,
+            safelist_match,
+            v
         )
-
-    return r
+        for v in client.parse_scan_result(av_results, av_name, av_version, heuristic_analysis_keys)
+    ]
 
 
 def create_tmp_manifest():
@@ -847,7 +841,12 @@ class TestAntiVirus:
 
         mocker.patch.object(AntiVirus, "_scan_file", return_value=("blah", "blah", avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value="blah")
-        mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=[AvHit("avname_blah", None, "blah")])
+        mocker.patch.object(
+            IcapHostClient,
+            "parse_scan_result",
+            return_value=[AvHit("avname_blah", None, "blah", False)]
+        )
+
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
 
         assert len(antivirus_class_instance.av_hit_result_sections) == 1
