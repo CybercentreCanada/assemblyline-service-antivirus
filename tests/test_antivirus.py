@@ -762,6 +762,85 @@ class TestAntiVirus:
         antivirus_class_instance.execute(service_request)
 
     @staticmethod
+    @pytest.mark.parametrize("sample", samples)
+    def test_execute_malicious(sample, antivirus_class_instance, mocker):
+        antivirus_class_instance.start()
+
+        service_task = ServiceTask(sample)
+        task = Task(service_task)
+        antivirus_class_instance._task = task
+        service_request = ServiceRequest(task)
+
+        service_request.task.deep_scan = True
+
+        avhost_mal = AntiVirusHost("timsav", "test0", 1, "icap", 1)
+        avhost_clean = AntiVirusHost("bobsav", "test1", 1, "icap", 1)
+
+        antivirus_class_instance.hosts = [avhost_clean, avhost_mal]
+
+        def mock_scan_file(host, file_hash, file_contents):
+            if host == avhost_clean:
+                return None, "cleanver", avhost_clean
+
+            return "blah_virus", "blah_ver", host
+
+        mocker.patch.object(AntiVirus, "_scan_file", side_effect=mock_scan_file)
+        mocker.patch.object(IcapHostClient, "parse_version", return_value="blah")
+        mocker.patch.object(
+            IcapHostClient,
+            "parse_scan_result",
+            return_value=[
+                AvHit("avname_blah", "blah_ver", "blah_vname", False),
+                AvHit("avname_other", "blah_ver", "blah_heuristic", True),
+                AvHit("cleanlistedsav", "blah_ver", "blah_cleanlisted", True)
+            ]
+        )
+
+        antivirus_class_instance.safelist_match = ["blah_cleanlisted"]
+
+        antivirus_class_instance.execute(service_request)
+
+        assert "virus_scan_vt3_file" in service_request.temp_submission_data
+
+        expected_result = {
+            "data": {
+                "attributes": {
+                    "last_analysis_results": {
+                        "avname_blah": {
+                            "engine_name": "avname_blah",
+                            "engine_version": "blah_ver",
+                            "category": "malicious",
+                            "result": "blah_vname"
+                        },
+                        "avname_other": {
+                            "engine_name": "avname_other",
+                            "engine_version": "blah_ver",
+                            "category": "suspicious",
+                            "result": "blah_heuristic"
+                        },
+                        "bobsav": {
+                            "engine_name": "bobsav",
+                            "engine_version": "blah",
+                            "category": "undetected",
+                            "result": None
+                        },
+                        "cleanlistedsav": {
+                            "engine_name": "cleanlistedsav",
+                            "engine_version": "blah_ver",
+                            "category": "undetected",
+                            "result": None
+                        }
+                    },
+                    "md5": sample["fileinfo"]["md5"],
+                    "sha1": sample["fileinfo"]["sha1"],
+                    "sha256": sample["fileinfo"]["sha256"]
+                }
+            }
+        }
+
+        assert service_request.temp_submission_data["virus_scan_vt3_file"] == expected_result
+
+    @staticmethod
     def test_stop(antivirus_class_instance):
         products = [{"product": "blah", "hosts": [{"ip": "blah", "port": 1, "method": "icap", "update_period": 1}]}]
         antivirus_class_instance.config["av_config"]["products"] = products
@@ -837,7 +916,10 @@ class TestAntiVirus:
         mocker.patch.object(IcapHostClient, "parse_version", return_value=None)
         mocker.patch.object(IcapHostClient, "parse_scan_result", return_value=[])
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
-        assert antivirus_class_instance.av_hit_result_sections == []
+        assert all([
+            len(g.safelist) == 0 and len(g.malicious) == 0
+            for g in antivirus_class_instance.group_results.values()
+        ])
 
         mocker.patch.object(AntiVirus, "_scan_file", return_value=("blah", "blah", avhost))
         mocker.patch.object(IcapHostClient, "parse_version", return_value="blah")
@@ -849,13 +931,15 @@ class TestAntiVirus:
 
         antivirus_class_instance._thr_process_file(avhost, "blah", b"blah")
 
-        assert len(antivirus_class_instance.av_hit_result_sections) == 1
+        scan_results = [g for name, g in antivirus_class_instance.group_results.items() if name == "blah"]
 
-        test = antivirus_class_instance.av_hit_result_sections[0]
+        assert len(scan_results) == 1
 
-        assert len(test.tags["av.virus_name"]) == 1
+        test = scan_results[0]
 
-        assert test.tags["av.virus_name"][0] == "blah"
+        assert len(test.malicious) == 1 and len(test.safelist) == 0
+
+        assert test.malicious[0].virus_name == "blah"
 
     @staticmethod
     def test_scan_file(antivirus_class_instance, antivirushost_class, dummy_requests_class_instance, mocker):
