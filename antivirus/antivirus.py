@@ -23,6 +23,7 @@ from assemblyline_v4_service.common.request import ServiceRequest
 from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
 from requests import Session
 from dataclasses import dataclass
+from collections.abc import Iterable
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
@@ -50,6 +51,7 @@ class AvHit:
     av_name: str
     av_version: Optional[str]
     virus_name: str
+    is_heuristic: bool
 
 
 class AvHitSection(ResultKeyValueSection):
@@ -175,8 +177,9 @@ class HostClient(ABC, Generic[DetailType]):
         self,
         av_results: bytes,
         av_name: str,
-        av_version: Optional[str]
-    ) -> List[AvHit]:
+        av_version: Optional[str],
+        heuristic_analysis_keys: List[str]
+    ) -> Iterable[AvHit]:
         """
         This method sends the results to the appropriate parser based on the method
         :param av_results: The results of scanning the file
@@ -293,8 +296,9 @@ class IcapHostClient(HostClient[IcapScanDetails]):
         self,
         av_results: bytes,
         av_name: str,
-        av_version: Optional[str]
-    ) -> List[AvHit]:
+        av_version: Optional[str],
+        heuristic_analysis_keys: List[str]
+    ) -> Iterable[AvHit]:
         virus_name: Optional[str] = None
 
         try:
@@ -332,24 +336,29 @@ class IcapHostClient(HostClient[IcapScanDetails]):
                 virus_name = NO_AV_PROVIDED
 
         if not virus_name:
-            return []
+            return
 
         if all(char in CHARS_TO_STRIP for char in virus_name):
             virus_name = NO_AV_PROVIDED
 
-        virus_names: Set[str] = set()
+        identified_virus_names: Set[str] = set()
         if "," in virus_name:
-            virus_names = {vname.strip() for vname in virus_name.split(",")}
+            identified_virus_names = {vname.strip() for vname in virus_name.split(",")}
         # For cases such as "Blah.blahblah (HTML)" and "Blah.blah/Generic Backdoor"
         elif " " in virus_name and (" (" not in virus_name and "Generic ".lower() not in virus_name.lower()):
-            virus_names = {vname.strip() for vname in virus_name.split(" ")}
+            identified_virus_names = {vname.strip() for vname in virus_name.split(" ")}
         else:
-            virus_names = {virus_name}
+            identified_virus_names = {virus_name}
 
-        return [
-            AvHit(av_name, av_version, v)
-            for v in virus_names
-        ]
+        for virus_name in identified_virus_names:
+            heur_analysis = False
+            heurisitc_keys = [h for h in heuristic_analysis_keys if h in virus_name]
+
+            for h in heurisitc_keys:
+                virus_name = virus_name.replace(h, "")
+
+            yield AvHit(av_name, av_version, virus_name, bool(heurisitc_keys))
+
 
     def close(self) -> None:
         """
@@ -491,39 +500,36 @@ class HttpHostClient(HostClient[HttpScanDetails]):
         self,
         av_results: bytes,
         av_name: str,
-        av_version: Optional[str]
-    ) -> List[AvHit]:
+        av_version: Optional[str],
+        heuristic_analysis_keys: List[str]
+    ) -> Iterable[AvHit]:
         http_results_as_json = json.loads(av_results)
-        av_hits = []
         virus_name_header = self.scan_details.virus_name_header
-        product_name = av_name
 
         if not http_results_as_json.get(virus_name_header):
-            return []
+            return
 
         raw_virus_name = http_results_as_json[virus_name_header]
 
         # If there is more than one signature returned, let's grab all of them
         # The assumption here is that antivirus providers will
         # return a virus name of the format <str> or <str>,<str>,...
-        result = []
         for virus_name in raw_virus_name.split(","):
-            source_vendor = av_name
-
             # The assumption here is that antivirus providers will return a
             # virus name of the format <av_name>:<virus_name>
+            heurisitc_keys = [h for h in heuristic_analysis_keys if h in virus_name]
+            for h in heurisitc_keys:
+                virus_name = virus_name.replace(h, "")
+
             if ":" in virus_name:
-                source_vendor, virus_name = virus_name.split(":")
+                av_name, virus_name = virus_name.split(":")
 
-            result.append(
-                AvHit(
-                    source_vendor.strip(),
-                    av_version,
-                    virus_name.strip()
-                )
+            yield AvHit(
+                av_name.strip(),
+                av_version,
+                virus_name.strip(),
+                bool(heurisitc_keys)
             )
-
-        return result
 
 
 class AntiVirusHost:
@@ -817,13 +823,13 @@ class AntiVirus(ServiceBase):
             version, getattr(host.host_client.scan_details, "version_header", None)
         )
 
+
+        av_hits: Iterable[AvHit] = []
         if result == ERROR_RESULT:
             self.av_errors.append(host.group)
-            av_hits = []
         # If an empty string is returned, we will treat this like an error
         elif result is not None and not result.strip():
             self.av_errors.append(host.group)
-            av_hits = []
             raise Exception(
                 f"Invalid result from {host.group} " f'server {host.ip}:{host.port} -> "{safe_str(str(result))}"'
             )
@@ -832,9 +838,8 @@ class AntiVirus(ServiceBase):
                 av_results=result,
                 av_name=host.group,
                 av_version=av_version,
+                heuristic_analysis_keys =host.heuristic_analysis_keys or []
             )
-        else:
-            av_hits = []
 
         elapsed_parse_time = time() - start_parse_time
         self.log.debug(
@@ -844,10 +849,9 @@ class AntiVirus(ServiceBase):
 
         self.av_hit_result_sections += [
             AntiVirus.handle_virus_hit_section(
-                host.heuristic_analysis_keys,
-                self.sig_score_revision_map,
-                self.kw_score_revision_map,
-                self.safelist_match,
+                self.sig_score_revision_map or {},
+                self.kw_score_revision_map or {},
+                self.safelist_match or [],
                 h
             )
             for h in av_hits
@@ -895,7 +899,6 @@ class AntiVirus(ServiceBase):
 
     @staticmethod
     def handle_virus_hit_section(
-        heuristic_analysis_keys: List[str],
         sig_score_revision_map: Dict[str, int],
         kw_score_revision_map: Dict[str, int],
         safelist_match: List[str],
@@ -903,35 +906,24 @@ class AntiVirus(ServiceBase):
     ) -> AvHitSection:
         """
         This method handles the creation of AvHitSections
-        :param av_name: The name of the antivirus product
-        :param av_version: A string detailing the version of the antivirus product, if applicable
-        :param virus_name: The name of the virus, determined by the antivirus product
-        :param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
-                                        indicate that heuristic analysis caused the signature to be raised
         :param sig_score_revision_map: A dictionary containing non-safelisted signature names that have a revised score
         :param kw_score_revision_map: A dictionary containing key words that hav revised scores that should be applied
         to all signatures containing any of these keywords
         :param safelist_match: A list of antivirus vendor virus names that are determined to be safe
+        :param hit: A description of the parsed anti-virus hit
         :return: None
         """
 
-        virus_name = hit.virus_name
-        av_name = hit.av_name
-        av_version = hit.av_version
-
-        heur_analysis = False
-        if any(heuristic_analysis_key in virus_name for heuristic_analysis_key in heuristic_analysis_keys):
-            heur_analysis = True
-            for heuristic_analysis_key in heuristic_analysis_keys:
-                virus_name = virus_name.replace(heuristic_analysis_key, "")
-        if heur_analysis:
-            return AvHitSection(
-                av_name, av_version, virus_name, {}, 2, sig_score_revision_map, kw_score_revision_map, safelist_match
-            )
-        else:
-            return AvHitSection(
-                av_name, av_version, virus_name, {}, 1, sig_score_revision_map, kw_score_revision_map, safelist_match
-            )
+        return AvHitSection(
+            hit.av_name,
+            hit.av_version,
+            hit.virus_name,
+            {},
+            2  if hit.is_heuristic else 1,
+            sig_score_revision_map,
+            kw_score_revision_map,
+            safelist_match
+        )
 
     @staticmethod
     def gather_results(
