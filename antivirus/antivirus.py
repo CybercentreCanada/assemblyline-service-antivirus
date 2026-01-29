@@ -194,6 +194,8 @@ class HostClient(ABC, Generic[DetailType]):
         :param av_results: The results of scanning the file
         :param av_name: The name of the antivirus product
         :param av_version: A string detailing the version of the antivirus product, if applicable
+        :param heuristic_analysis_keys: A list of strings that are found in the antivirus product's signatures that
+                                        indicate that heuristic analysis caused the signature to be raised
         :return: A list of AvHitSections detailing the results of the scan, if applicable
         """
         raise NotImplementedError()
@@ -1004,8 +1006,7 @@ class AntiVirus(ServiceBase):
     ) -> Dict[str, Any]:
         """
         Construct a VT3 File object summarizing detection results.
-        :param malicious: Malicious VT3 file object entries
-        :param clean: Clean VT3 file object entries
+        :param group_results: Group detection results
         :return: A VT3 File Object including scan results for all AV Groups.
         """
         def define_result(engine: str, version: Optional[str], category: str, virus_name: Optional[str] = None):
