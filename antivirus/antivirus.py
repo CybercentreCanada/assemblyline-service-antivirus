@@ -24,8 +24,6 @@ from assemblyline_v4_service.common.result import Result, ResultKeyValueSection
 from requests import Session
 from dataclasses import dataclass, field
 from collections.abc import Iterable
-from functools import reduce
-from itertools import chain, repeat
 
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
