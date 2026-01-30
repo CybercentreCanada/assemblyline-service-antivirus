@@ -782,12 +782,14 @@ class AntiVirus(ServiceBase):
         data = AntiVirus.preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
 
-        request.temp_submission_data["virus_scan_vt3_file"] = AntiVirus.create_vt3_file_summary(
-            self.group_results,
-            request.md5,
-            request.sha1,
-            request.sha256
-        )
+        request.temp_submission_data["virus_scan_vt3_files"] = [
+            AntiVirus.create_vt3_file_summary(
+                self.group_results,
+                request.md5,
+                request.sha1,
+                request.sha256
+            )
+        ]
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
@@ -997,7 +999,6 @@ class AntiVirus(ServiceBase):
                 no_threat_sec.set_item("errors_during_scanning", [host for host in av_errors])
             result.add_section(no_threat_sec)
 
-
     @staticmethod
     def create_vt3_file_summary(
         group_results: List[AvGroupResult], md5: str, sha1: str, sha256: str
@@ -1030,16 +1031,13 @@ class AntiVirus(ServiceBase):
                 combined_results[h.av_name] = define_result(h.av_name, h.av_version, "undetected")
 
         return {
-            "data": {
-                "attributes": {
-                    "last_analysis_results": combined_results,
-                    "md5": md5,
-                    "sha1": sha1,
-                    "sha256": sha256
-                }
+            "attributes": {
+                "last_analysis_results": combined_results,
+                "md5": md5,
+                "sha1": sha1,
+                "sha256": sha256
             }
         }
-
 
     @staticmethod
     def determine_service_context(request: ServiceRequest, hosts: List[AntiVirusHost]) -> None:

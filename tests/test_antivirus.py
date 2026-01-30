@@ -800,10 +800,10 @@ class TestAntiVirus:
 
         antivirus_class_instance.execute(service_request)
 
-        assert "virus_scan_vt3_file" in service_request.temp_submission_data
+        assert "virus_scan_vt3_files" in service_request.temp_submission_data
 
-        expected_result = {
-            "data": {
+        expected_result = [
+            {
                 "attributes": {
                     "last_analysis_results": {
                         "avname_blah": {
@@ -836,9 +836,9 @@ class TestAntiVirus:
                     "sha256": sample["fileinfo"]["sha256"]
                 }
             }
-        }
+        ]
 
-        assert service_request.temp_submission_data["virus_scan_vt3_file"] == expected_result
+        assert service_request.temp_submission_data["virus_scan_vt3_files"] == expected_result
 
     @staticmethod
     def test_stop(antivirus_class_instance):
