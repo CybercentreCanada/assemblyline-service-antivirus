@@ -804,6 +804,7 @@ class TestAntiVirus:
 
         expected_result = [
             {
+                "type": "file",
                 "attributes": {
                     "last_analysis_results": {
                         "avname_blah": {

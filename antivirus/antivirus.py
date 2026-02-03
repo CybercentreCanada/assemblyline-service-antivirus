@@ -1031,6 +1031,7 @@ class AntiVirus(ServiceBase):
                 combined_results[h.av_name] = define_result(h.av_name, h.av_version, "undetected")
 
         return {
+            "type": "file",
             "attributes": {
                 "last_analysis_results": combined_results,
                 "md5": md5,
