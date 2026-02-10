@@ -25,6 +25,8 @@ from requests import Session
 from dataclasses import dataclass, field
 from collections.abc import Iterable
 
+from antivirus.report import package_scan_report
+
 ICAP_METHOD = "icap"
 HTTP_METHOD = "http"
 VALID_METHODS = [ICAP_METHOD, HTTP_METHOD]
@@ -782,14 +784,14 @@ class AntiVirus(ServiceBase):
         data = AntiVirus.preprocess_ontological_result(request.result.sections)
         [self.ontology.add_result_part(Antivirus, d) for d in data]
 
-        request.temp_submission_data["virus_scan_vt3_files"] = [
+        request.temp_submission_data["virus_scan_vt3_files"] = package_scan_report([
             AntiVirus.create_vt3_file_summary(
                 self.group_results,
                 request.md5,
                 request.sha1,
                 request.sha256
             )
-        ]
+        ])
 
         self.log.debug(f"[{request.sid}/{request.sha256}] Completed execution!")
 
