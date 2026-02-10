@@ -8,6 +8,9 @@ from socket import timeout
 from threading import Thread
 from time import sleep, time
 
+import gzip
+import base64
+
 import pytest
 from antivirus.antivirus import (
     ERROR_RESULT,
@@ -64,6 +67,20 @@ samples = [
     ),
 ]
 
+def unpackage_report(b64_string: str):
+    if not b64_string:
+        return []
+
+    try:
+        compressed_bytes = base64.b64decode(b64_string)
+
+        buf = BytesIO(compressed_bytes)
+        with gzip.GzipFile(fileobj=buf, mode='rb') as f:
+            decompressed_text = f.read().decode('utf-8')
+
+        return json.loads(decompressed_text)
+    except Exception as e:
+        return []
 
 def create_scan_result_sections(
         client,
@@ -839,7 +856,7 @@ class TestAntiVirus:
             }
         ]
 
-        assert service_request.temp_submission_data["virus_scan_vt3_files"] == expected_result
+        assert unpackage_report(service_request.temp_submission_data["virus_scan_vt3_files"]) == expected_result
 
     @staticmethod
     def test_stop(antivirus_class_instance):
