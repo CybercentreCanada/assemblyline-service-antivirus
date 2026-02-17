@@ -22,6 +22,8 @@ timeout: 120
 enabled: false
 privileged: true
 
+uses_temp_submission_data: true
+
 config:
   av_config:
     products:
